@@ -1,10 +1,10 @@
 # PSX Auto Fight
 
-A Three.js auto-fight demo with Anime Girl and Gundam. Fighters move and use hand and foot contact to attack; Anime Girl and Gundam use a variety of Mixamo capoeira animations.
+A side-view Three.js automatic fighting game with Anime Girl and Kung Fu Fighter. The fighters move along one horizontal plane, face their opponent, and use animated hand and foot attacks.
 
 ## Match rules
 
-The game is an automatic best-of-three match. Each round lasts up to 60 seconds. A hit must connect during an attack’s active window; a timed dodge avoids it. The fighter with more health wins on timeout, and equal health is a draw. A completed match restarts automatically.
+The game is an automatic best-of-three match. Each round lasts up to 60 seconds. A hit must connect during an attack’s active window; a timed dodge avoids it and a guard reduces damage. The fighters react to nearby attacks with defensive decisions and show a recoil when hit. The fighter with more health wins on timeout, and equal health is a draw. A completed match restarts automatically.
 
 ## Local development
 

@@ -52,3 +52,17 @@ test('timeout with equal health is a draw', () => {
   assert.equal(engine.result, '平手');
   assert.deepEqual(engine.scores, [0, 0]);
 });
+
+test('guard reduces damage without interrupting the defender', () => {
+  const a = { name: 'A', hp: 100, alive: true };
+  const b = { name: 'B', hp: 100, alive: true, state: 'guard' };
+  const engine = new FightingEngine([a, b], { startTime: 0 });
+  engine.step(2);
+  engine.startAttack(a, b, { activeFrom: 2, activeUntil: 3, damage: 20 });
+  const result = engine.tryHit(a, b, 2.5, true);
+  assert.equal(result.blocked, true);
+  assert.equal(result.damage, 3);
+  assert.equal(b.hp, 97);
+  assert.equal(b.state, 'guard');
+  assert.equal(engine.tryHit(a, b, 2.6, true), null);
+});

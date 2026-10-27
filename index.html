@@ -7,11 +7,20 @@
   <style>
     html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden; font-family: ui-sans-serif, system-ui, sans-serif; }
     #hud {
-      position: fixed; left: 12px; top: 12px; z-index: 2; color: #e8ecf1;
-      background: rgba(0,0,0,.45); padding: 10px 12px; border-radius: 10px;
-      font-size: 13px; line-height: 1.45; max-width: min(520px, 92vw);
+      position: fixed; left: 3%; right: 3%; top: 16px; z-index: 2;
+      color: #fff; font-weight: 800; text-shadow: 1px 2px #111;
+      pointer-events: none;
     }
-    #hud b { color: #9fe870; }
+    .battle-hud { display: grid; grid-template-columns: 1fr 100px 1fr; gap: 14px; align-items: start; }
+    .fighter-name { font-size: clamp(12px, 2vw, 20px); margin-bottom: 5px; }
+    .fighter-right { text-align: right; }
+    .health { height: 18px; background: #591d2b; border: 3px solid #e9e2c8; box-shadow: 0 3px 0 #27222b; }
+    .health-fill { height: 100%; width: 100%; background: linear-gradient(#fff58d, #e5a32e); transition: width .18s; }
+    .fighter-right .health-fill { margin-left: auto; }
+    .match-info { text-align: center; font-size: clamp(12px, 1.5vw, 16px); }
+    #timer { font-size: clamp(25px, 4vw, 42px); line-height: 1; color: #ffe082; }
+    #status { text-align: center; margin-top: 10px; font-size: clamp(14px, 2vw, 22px); }
+    @media (max-width: 600px) { .battle-hud { grid-template-columns: 1fr 55px 1fr; gap: 6px; } .health { height: 12px; } #credit { max-width: 90vw; } }
     #credit {
       position: fixed; right: 12px; bottom: 10px; z-index: 2; color: #9aa3ad;
       font-size: 11px; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 8px;
@@ -22,8 +31,12 @@
 </head>
 <body>
   <div id="hud">
-    <div><b>Auto mode</b> — 拳擊／踢擊／閃避（手腳骨碰撞）</div>
-    <div id="status">Loading…</div>
+    <div class="battle-hud">
+      <div><div class="fighter-name">ANIME GIRL</div><div class="health"><div id="health0" class="health-fill"></div></div></div>
+      <div class="match-info"><div id="timer">60</div><div id="score">0 : 0</div></div>
+      <div class="fighter-right"><div class="fighter-name">KUNG FU FIGHTER</div><div class="health"><div id="health1" class="health-fill"></div></div></div>
+    </div>
+    <div id="status">載入角色中…</div>
   </div>
   <div id="credit">
     Models: <a href="https://sketchfab.com/3d-models/anime-girl-character-free-gameready-animated-b8e1967c0703492e8121d9457f056d27" target="_blank" rel="noopener">Anime Girl by RahulTambat (modified)</a> · <a href="https://sketchfab.com/3d-models/mr-sexy-man-fighter-with-13-animations-127cc242790c422fb9599f774b1c9642" target="_blank" rel="noopener">Mr Sexy Man by Jungle Jim</a> · Animations: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Adobe Mixamo</a> · CC BY 4.0
@@ -40,7 +53,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { FightingEngine } from './fighting-engine.mjs';
 
@@ -51,8 +63,17 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a222c);
 scene.fog = new THREE.Fog(0x1a222c, 12, 28);
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 80);
-camera.position.set(0, 4.2, 9);
+const camera = new THREE.OrthographicCamera(-5, 5, 3, -3, 0.1, 80);
+camera.position.set(0, 2.4, 12);
+camera.lookAt(0, 1.2, 0);
+function resizeCamera() {
+  const aspect = innerWidth / innerHeight;
+  const halfHeight = Math.max(3.2, 5.2 / aspect);
+  camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect;
+  camera.top = halfHeight; camera.bottom = -halfHeight;
+  camera.updateProjectionMatrix();
+}
+resizeCamera();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -60,32 +81,27 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 1.1, 0);
-controls.enableDamping = true;
-controls.maxPolarAngle = Math.PI * 0.49;
-
 scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x334155, 1.1));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4);
 sun.position.set(5, 10, 4);
 sun.castShadow = true;
 scene.add(sun);
 
-const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(8, 48),
-  new THREE.MeshStandardMaterial({ color: 0x2b3642, roughness: 0.95 })
-);
+// A fixed side-view stage keeps the action on a single fighting plane.
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 12), new THREE.MeshStandardMaterial({ color: 0x39434b, roughness: 0.95 }));
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
-
-const ring = new THREE.Mesh(
-  new THREE.RingGeometry(7.6, 8, 64),
-  new THREE.MeshBasicMaterial({ color: 0x5b6b7c, side: THREE.DoubleSide })
-);
-ring.rotation.x = -Math.PI / 2;
-ring.position.y = 0.01;
-scene.add(ring);
+const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(30, 9), new THREE.MeshStandardMaterial({ color: 0x263b4c }));
+backdrop.position.set(0, 4.5, -3);
+scene.add(backdrop);
+for (let x = -12; x <= 12; x += 2) {
+  const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.15, 5, 0.12), new THREE.MeshStandardMaterial({ color: 0x526579 }));
+  pillar.position.set(x, 2.5, -2.9); scene.add(pillar);
+}
+const stageEdge = new THREE.Mesh(new THREE.BoxGeometry(30, 0.09, 0.08), new THREE.MeshStandardMaterial({ color: 0xb58a51 }));
+stageEdge.position.set(0, 0.05, -2.8); scene.add(stageEdge);
+const ARENA_EDGE = 4.2;
 
 const ROSTER = [
   { url: 'models/sketchgirl/character.glb', tag: 'sketchgirl', name: 'Anime Girl', tint: 0xff78bf, custom: 'sketchgirl' },
@@ -178,6 +194,7 @@ class Fighter {
     this.xbotAction = null;
     this.xbotBones = {};
     this.psxMeshes = [];
+    this.reactionStart = 0;
     root.traverse((o) => {
       if (o.isMesh) this.psxMeshes.push(o);
     });
@@ -531,8 +548,22 @@ class Fighter {
     }
   }
 
+  updateReaction(now) {
+    const model = this.root.children[0];
+    if (this.state === 'death') {
+      const progress = Math.min(1, Math.max(0, (now - this.reactionStart) / 0.45));
+      model.rotation.x = -1.25 * progress;
+    } else if (this.state === 'hit') {
+      const progress = Math.min(1, Math.max(0, (now - this.reactionStart) / 0.5));
+      model.rotation.x = -0.35 * Math.sin(Math.PI * progress);
+    } else {
+      model.rotation.x = 0;
+    }
+  }
+
   update(dt, now) {
     this.mixer.update(dt);
+    this.updateReaction(now);
     this.centerOnArenaPosition();
     if (this.xbotMixer && this.usingXbot) this.xbotMixer.update(dt);
 
@@ -556,7 +587,8 @@ class Fighter {
           if (result) {
             this.hitLanded = true;
             this.pendingHit = null;
-            if (!result.dodged) tgt.takeHit(result.damage, now, this, ph.label || m.label);
+            if (result.blocked) tgt.setMoveLabel('格擋');
+            else if (!result.dodged) tgt.takeHit(result.damage, now, this, ph.label || m.label);
           }
         }
       } else {
@@ -607,18 +639,31 @@ class Fighter {
     const dist = me.distanceTo(them);
     this.face(them);
 
-    // React to an opponent's attack with a short, purposeful dodge.
-    if (this.custom && this.target.state === 'attack' && dist < 2.3 && this.dodgeCooldown <= 0 && Math.random() < 0.1) {
-      this.state = 'dodge';
-      this.play('hit', false, 1.2);
-      this.busyUntil = now + 0.6;
-      this.dodgeCooldown = 2.5;
-      this.setMoveLabel('閃避');
+    // Defend against an actual nearby attack instead of independently spamming moves.
+    if (this.target.state === 'attack' && this.target.pendingHit && dist < 2.3 && this.state !== 'hit' && this.defenseAttack !== this.target.pendingHit) {
+      this.defenseAttack = this.target.pendingHit;
+      this.willDefend = Math.random() < 0.75;
+    }
+    if (this.target.state === 'attack' && dist < 2.3 && this.state !== 'hit' && this.willDefend) {
+      if (this.state !== 'guard' && this.state !== 'dodge') {
+        if (this.dodgeCooldown <= 0 && Math.random() < 0.3) {
+          this.state = 'dodge';
+          this.play('hit', false, 1.2);
+          this.busyUntil = now + 0.6;
+          this.dodgeCooldown = 2.5;
+          this.setMoveLabel('閃避');
+        } else {
+          this.state = 'guard';
+          this.play('idle', true);
+          this.setMoveLabel('防禦');
+        }
+      }
       return;
     }
-    if (this.state === 'dodge') {
+    if (this.state === 'dodge' || this.state === 'guard') {
       this.state = 'idle';
       this.setMoveLabel('');
+      this.cooldown = Math.max(this.cooldown, 0.3);
       this.play('idle', true);
     }
     if (this.state === 'hit') {
@@ -646,8 +691,7 @@ class Fighter {
       const speed = run ? 2.8 : 1.5;
       const dir = new THREE.Vector3(them.x - me.x, 0, them.z - me.z).normalize();
       me.addScaledVector(dir, Math.min(speed * dt, Math.max(0, dist - need)));
-      const r = Math.hypot(me.x, me.z);
-      if (r > 7.2) me.multiplyScalar(7.2 / r);
+      me.x = THREE.MathUtils.clamp(me.x, -ARENA_EDGE, ARENA_EDGE);
     } else if (nextMove) {
       this.startMove(nextMove, now);
     } else if (this.state !== 'idle' && this.state !== 'attack') {
@@ -673,18 +717,18 @@ class Fighter {
         me.addScaledVector(dir, moveLabel === '重拳' || moveLabel === '踢擊' ? 0.36 : 0.18);
       }
     }
+    this.reactionStart = now;
     if (this.hp <= 0) {
       this.alive = false;
       this.state = 'death';
       this.setMoveLabel('');
-      this.play('death', false);
+      this.play('idle', true);
       this.marker.visible = false;
       return;
     }
     this.state = 'hit';
-    this.play('hit', false);
-    const hd = this.clips.hit?.getClip().duration || 0.35;
-    this.busyUntil = now + hd * 0.9;
+    this.play('idle', true);
+    this.busyUntil = now + 0.5;
   }
 }
 
@@ -780,9 +824,8 @@ async function spawn(spec, index, total) {
     });
   }
   const clips = clipMap(actions, spec.tag);
-  const ang = (index / total) * Math.PI * 2;
-  root.position.set(Math.cos(ang) * 3.2, 0, Math.sin(ang) * 3.2);
-  root.rotation.y = ang + Math.PI;
+  root.position.set(index === 0 ? -3 : 3, 0, 0);
+  root.rotation.y = index === 0 ? Math.PI / 2 : -Math.PI / 2;
   scene.add(root);
   const f = new Fighter(root, mixer, clips, spec.name, spec.tint, spec.custom);
   if (xbotTemplate && !spec.custom) f.attachXbot(xbotTemplate);
@@ -830,9 +873,12 @@ function resetRound() {
     f.busyUntil = 0;
     f.cooldown = 0.5 + Math.random() * 0.5;
     f.dodgeCooldown = 0;
+    f.defenseAttack = null;
+    f.willDefend = false;
     f.marker.visible = true;
     f.setMoveLabel('');
     f.root.position.set(i === 0 ? -3 : 3, 0, 0);
+    f.root.children[0].rotation.x = 0;
     f.play('idle', true);
   });
   pickTargets();
@@ -869,14 +915,16 @@ async function main() {
     if (matchEngine.phase === 'fight') {
       for (const f of fighters) f.update(dt, now);
       separateFighters();
+      for (const f of fighters) { f.root.position.z = 0; f.root.position.x = THREE.MathUtils.clamp(f.root.position.x, -ARENA_EDGE, ARENA_EDGE); }
       pickTargets();
     } else {
-      for (const f of fighters) { f.mixer.update(dt); f.centerOnArenaPosition(); }
+      for (const f of fighters) { f.mixer.update(dt); f.updateReaction(now); f.centerOnArenaPosition(); }
     }
-    const hp = fighters.map((f) => `${f.name} ${f.alive ? Math.ceil(f.hp) : 'KO'}`).join(' · ');
-    const roundStatus = matchEngine.phase === 'ready' ? '準備！' : matchEngine.phase === 'fight' ? `剩餘 ${Math.ceil(matchEngine.remaining)} 秒` : matchEngine.result;
-    setStatus(`第 ${matchEngine.round} 回合 · ${matchEngine.scores.join(' : ')} · ${roundStatus} | ${hp}`);
-    controls.update();
+    fighters.forEach((f, i) => { document.getElementById(`health${i}`).style.width = `${Math.max(0, f.hp)}%`; });
+    document.getElementById('timer').textContent = Math.ceil(matchEngine.remaining);
+    document.getElementById('score').textContent = matchEngine.scores.join(' : ');
+    const roundStatus = matchEngine.phase === 'ready' ? `第 ${matchEngine.round} 回合 — 準備！` : matchEngine.phase === 'fight' ? '' : matchEngine.result;
+    setStatus(roundStatus);
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
@@ -884,8 +932,7 @@ async function main() {
 }
 
 addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+  resizeCamera();
   renderer.setSize(innerWidth, innerHeight);
 });
 

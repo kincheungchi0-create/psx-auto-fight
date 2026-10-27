@@ -62,6 +62,11 @@ export class FightingEngine {
     if (this.phase !== 'fight' || !attack || attack.target !== target || attack.consumed || !attacker.alive || !target.alive || now < attack.activeFrom || now > attack.activeUntil || !connected) return null;
     attack.consumed = true;
     if (target.state === 'dodge' && now < target.busyUntil) return { dodged: true, damage: 0 };
+    if (target.state === 'guard') {
+      const damage = attack.damage * 0.15;
+      target.hp = Math.max(0, target.hp - damage);
+      return { dodged: false, blocked: true, damage };
+    }
     target.hp = Math.max(0, target.hp - attack.damage);
     this.cancelAttack(target);
     return { dodged: false, damage: attack.damage };
