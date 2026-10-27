@@ -3,3 +3,9 @@
 node_modules/
 textures/
 models/spin_flip_kick_mixamo_raw.glb
+# Unused Mixamo source / retarget intermediates (page only fetches *_xbot.glb + PSX)
+models/*.fbx
+models/spin_flip_kick.glb
+models/spin_flip_kick_mixamo_raw.glb
+models/spin_flip_kick_xbot_*.glb
+assets/mixamo/

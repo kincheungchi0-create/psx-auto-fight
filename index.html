@@ -41,6 +41,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SkeletonUtils } from 'three/addons/utils/SkeletonUtils.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const statusEl = document.getElementById('status');
 const setStatus = (t) => { statusEl.textContent = t; };
@@ -604,12 +605,47 @@ class Fighter {
 }
 
 const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
 const fighters = [];
 let resetting = false;
+/** Deduped GLTF loads (office/survivor shared by 2 fighters each). */
+const gltfCache = new Map();
+let xbotLoadPromise = null;
+
+function loadGltf(url) {
+  if (!gltfCache.has(url)) gltfCache.set(url, loader.loadAsync(url));
+  return gltfCache.get(url);
+}
+
+/** Background-load Mixamo X Bot; attach to fighters when ready. */
+function ensureXbotLoaded() {
+  if (xbotTemplate) return Promise.resolve(xbotTemplate);
+  if (xbotLoadPromise) return xbotLoadPromise;
+  xbotLoadPromise = (async () => {
+    try {
+      if (MeshoptDecoder.ready) await MeshoptDecoder.ready;
+      const spinGltf = await loader.loadAsync('models/spin_flip_kick_xbot.glb');
+      const clip = spinGltf.animations.find((a) => /mixamo|spin|layer/i.test(a.name)) || spinGltf.animations[0];
+      if (!clip) throw new Error('no animation in xbot glb');
+      xbotTemplate = { scene: spinGltf.scene, clip };
+      for (const f of fighters) {
+        if (!f.xbot) f.attachXbot(xbotTemplate);
+      }
+      console.info('xbot kick loaded', clip.name, 'dur', clip.duration, 'tracks', clip.tracks.length);
+      return xbotTemplate;
+    } catch (e) {
+      console.warn('xbot kick missing, procedural fallback', e);
+      xbotTemplate = null;
+      return null;
+    }
+  })();
+  return xbotLoadPromise;
+}
 
 async function spawn(spec, index, total) {
-  const gltf = await loader.loadAsync(spec.url);
-  const root = gltf.scene;
+  const gltf = await loadGltf(spec.url);
+  // Clone so two roster entries sharing a URL get independent skeletons/meshes
+  const root = SkeletonUtils.clone(gltf.scene);
   root.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -669,22 +705,15 @@ function maybeReset(now) {
 }
 
 async function main() {
-  setStatus('Loading Mixamo X Bot 旋風腳…');
-  try {
-    const spinGltf = await loader.loadAsync('models/spin_flip_kick_xbot.glb');
-    const clip = spinGltf.animations.find((a) => /mixamo|spin|layer/i.test(a.name)) || spinGltf.animations[0];
-    if (!clip) throw new Error('no animation in xbot glb');
-    xbotTemplate = { scene: spinGltf.scene, clip };
-    console.info('xbot kick loaded', clip.name, 'dur', clip.duration, 'tracks', clip.tracks.length);
-  } catch (e) {
-    console.warn('xbot kick missing, procedural fallback', e);
-    xbotTemplate = null;
-  }
   setStatus('Loading characters…');
-  for (let i = 0; i < ROSTER.length; i++) {
-    fighters.push(await spawn(ROSTER[i], i, ROSTER.length));
-  }
+  // Prefetch unique PSX models in parallel (2 URLs, not 4 serial)
+  await Promise.all([...new Set(ROSTER.map((r) => r.url))].map(loadGltf));
+  const spawned = await Promise.all(ROSTER.map((spec, i) => spawn(spec, i, ROSTER.length)));
+  fighters.push(...spawned);
   pickTargets();
+
+  // X Bot (~meshopt) loads in background — kick falls back to procedural until ready
+  ensureXbotLoaded();
 
   const clock = new THREE.Clock();
   function tick() {
@@ -693,7 +722,8 @@ async function main() {
     for (const f of fighters) f.update(dt, now);
     pickTargets();
     maybeReset(now);
-    setStatus(fighters.map((f) => `${f.name} ${f.alive ? Math.ceil(f.hp) : 'KO'}`).join(' · '));
+    const hp = fighters.map((f) => `${f.name} ${f.alive ? Math.ceil(f.hp) : 'KO'}`).join(' · ');
+    setStatus(xbotTemplate ? hp : (hp + ' · 旋風腳載入中…'));
     controls.update();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
