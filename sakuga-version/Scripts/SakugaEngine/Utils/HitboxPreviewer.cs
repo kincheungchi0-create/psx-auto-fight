@@ -29,7 +29,7 @@ namespace SakugaEngine.Utils
                 if (Frame >= Data.Duration) Frame = 0;
             }
 
-            Animator.ViewAnimations(GetCurrentAnimationSettings(), Frame);
+            Animator.ViewAnimations(GetCurrentAnimationSettings(), Frame, Data);
 
             var hitboxData = GetCurrentHitboxSettings();
             PreviewHitboxes(hitboxData);

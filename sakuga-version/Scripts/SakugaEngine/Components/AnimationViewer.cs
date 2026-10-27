@@ -18,7 +18,7 @@ namespace SakugaEngine
             // TODO
         }
 
-        public void ViewAnimations(AnimationSettings anim, int Frame)
+        public void ViewAnimations(AnimationSettings anim, int Frame, AnimationData data = null)
         {
             if (anim == null) return;
             if (anim.SourceAnimation == "") return;
@@ -54,7 +54,7 @@ namespace SakugaEngine
             {
                 string sourceName = anim.SourceAnimation;
                 float referenceLength = players.Length > 0 && players[0].HasAnimation(sourceName) ? (float)players[0].GetAnimation(sourceName).Length : 1f;
-                visual.ViewAnimation(anim, Frame, referenceLength);
+                visual.ViewAnimation(anim, Frame, referenceLength, data);
             }
 
             if (OffsetNode != null)

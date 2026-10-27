@@ -299,7 +299,7 @@ namespace SakugaEngine
             if (Animator != null)
             {
                 Animator.SetDepth(LayerSorting);
-                Animator.ViewAnimations(StateManager.GetCurrentAnimationSettings(), StateManager.CurrentStateFrame);
+                Animator.ViewAnimations(StateManager.GetCurrentAnimationSettings(), StateManager.CurrentStateFrame, StateManager.GetCurrentState()?.AnimationData);
             }
         }
 #region Knockback physics (not sure if it's gonna stay here)
