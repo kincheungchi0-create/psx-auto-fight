@@ -36,10 +36,10 @@
     }
   }
   </script>
-  <script type="module">
+  <script type="module" onerror="document.getElementById('status').textContent = 'Load failed: unable to start the game. Please check your connection and refresh.'">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { SkeletonUtils } from 'three/addons/utils/SkeletonUtils.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
