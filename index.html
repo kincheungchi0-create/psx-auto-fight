@@ -22,11 +22,11 @@
 </head>
 <body>
   <div id="hud">
-    <div><b>Auto mode</b> — 直拳／重拳／旋風腳 Mixamo X Bot（手腳骨碰撞）</div>
+    <div><b>Auto mode</b> — 直拳／重拳／旋風腳（手腳骨碰撞）</div>
     <div id="status">Loading…</div>
   </div>
   <div id="credit">
-    Models: <a href="https://heyheythere.itch.io/psx-people-free" target="_blank" rel="noopener">PSX People Free</a> · Kick: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Mixamo Spin Flip Kick (X Bot)</a> · CC BY 4.0
+    Models: <a href="https://heyheythere.itch.io/psx-people-free" target="_blank" rel="noopener">PSX People Free</a> · <a href="https://sketchfab.com/3d-models/mewtwo-ssb4-8f4a435e109e48fba91b7ed3a6e84a0a" target="_blank" rel="noopener">Mewtwo by 雨宮レン (modified)</a> · <a href="https://sketchfab.com/3d-models/gundam-evolution-rx-78-2-c98e4d4382434ea280ab33a2bb6beb05" target="_blank" rel="noopener">Gundam by NAJWAN_ID (modified)</a> · Animations: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Adobe Mixamo</a> · CC BY 4.0
   </div>
   <script type="importmap">
   {
@@ -87,11 +87,22 @@ ring.position.y = 0.01;
 scene.add(ring);
 
 const ROSTER = [
+  { url: 'models/mewtwo/character.glb', tag: 'mewtwo', name: 'Mewtwo', tint: 0xc77dff, custom: 'mewtwo' },
+  { url: 'models/gundam/character.glb', tag: 'gundam', name: 'Gundam', tint: 0x80edff, custom: 'gundam' },
   { url: 'models/office_worker.glb', tag: 'office_worker', name: 'Office A', tint: 0x8ecae6 },
   { url: 'models/survivor_woman.glb', tag: 'survivor_woman', name: 'Survivor A', tint: 0xffb703 },
   { url: 'models/office_worker.glb', tag: 'office_worker', name: 'Office B', tint: 0x219ebc },
   { url: 'models/survivor_woman.glb', tag: 'survivor_woman', name: 'Survivor B', tint: 0xfb8500 },
 ];
+
+const MEWTWO_MOVES = {
+  idle: ['capoeira', 'capoeira_2', 'capoeira_3', 'ginga_variation_1', 'ginga_variation_2', 'ginga_variation_3'],
+  walk: ['ginga_forward', 'ginga_backward', 'ginga_sideways_1', 'ginga_sideways_2'],
+  jab: ['boxing_jab_cross'],
+  heavy: ['boxing_jab_cross', 'bencao', 'chapa_2', 'pontera'],
+  kick: ['armada', 'armada_to_esquiva', 'au', 'au_to_role', 'chapa_giratoria', 'chapa_giratoria_2', 'chapaeu_de_couro', 'ginga_sideways_to_au', 'macaco_side', 'martelo_2', 'martelo_3', 'martelo_do_chau', 'martelo_do_chau_sem_mao', 'meia_lua_de_compasso', 'meia_lua_de_compasso_back', 'meia_lua_de_frente', 'mma_spinning_back_kick', 'queshada_1', 'queshada_2', 'rasteira_1', 'rasteira_2', 'troca_1'],
+  hit: ['esquiva_1', 'esquiva_2', 'esquiva_3', 'esquiva_4', 'esquiva_5'],
+};
 
 function clipMap(gltfActions, tag) {
   const map = {};
@@ -101,6 +112,8 @@ function clipMap(gltfActions, tag) {
   }
   return map;
 }
+
+const GUNDAM_MOVES = { ...MEWTWO_MOVES, jab: ['bencao'], heavy: ['chapa_2', 'pontera', 'bencao'], kick: MEWTWO_MOVES.kick.filter((name) => name !== 'mma_spinning_back_kick') };
 
 const ATTACK_ENTER = 0.78;
 const ATTACK_STOP = 0.50;
@@ -135,10 +148,12 @@ function findBoneLoose(root, ...names) {
 let xbotTemplate = null; // { scene, clip }
 
 class Fighter {
-  constructor(root, mixer, clips, name, tint) {
+  constructor(root, mixer, clips, name, tint, custom = false) {
     this.root = root;
     this.mixer = mixer;
     this.clips = clips;
+    this.custom = custom;
+    this.moveSets = custom === 'gundam' ? GUNDAM_MOVES : MEWTWO_MOVES;
     this.name = name;
     this.hp = 100;
     this.state = 'idle';
@@ -161,18 +176,18 @@ class Fighter {
       if (o.isMesh) this.psxMeshes.push(o);
     });
     this.bones = {
-      hips: findBone(root, 'Hips'),
-      spine: findBone(root, 'Spine'),
-      head: findBone(root, 'Head'),
+      hips: findBoneLoose(root, 'Hips', 'mixamorigHips', 'mixamorig_Hips', '_03_-_HipN'),
+      spine: findBoneLoose(root, 'Spine', 'mixamorigSpine', 'mixamorig_Spine', '_13_-_BustN'),
+      head: findBoneLoose(root, 'Head', 'mixamorigHead', 'mixamorig_Head', '_23_-_HeadN'),
       lArm: findBone(root, 'LeftUpLeg') || findBone(root, 'LeftArm'),
       lUpLeg: findBone(root, 'LeftUpLeg'),
       lLeg: findBone(root, 'LeftLeg'),
-      lFoot: findBone(root, 'LeftFoot'),
+      lFoot: findBoneLoose(root, 'LeftFoot', 'mixamorigLeftFoot', 'mixamorig_LeftFoot', '_06_-_LFootJ'),
       rUpLeg: findBone(root, 'RightUpLeg'),
       rLeg: findBone(root, 'RightLeg'),
-      rFoot: findBone(root, 'RightFoot'),
-      lHand: findBone(root, 'LeftHand'),
-      rHand: findBone(root, 'RightHand'),
+      rFoot: findBoneLoose(root, 'RightFoot', 'mixamorigRightFoot', 'mixamorig_RightFoot', '_10_-_RFootJ'),
+      lHand: findBoneLoose(root, 'LeftHand', 'mixamorigLeftHand', 'mixamorig_LeftHand', '_17_-_LHandN'),
+      rHand: findBoneLoose(root, 'RightHand', 'mixamorigRightHand', 'mixamorig_RightHand', '_21_-_RHandN'),
       lFore: findBone(root, 'LeftForeArm'),
       rFore: findBone(root, 'RightForeArm'),
     };
@@ -296,6 +311,11 @@ class Fighter {
   }
 
   play(name, loop = false, timeScale = 1) {
+    if (this.custom) {
+      const choices = this.moveSets[name === 'run' ? 'walk' : name] || this.moveSets.idle;
+      const available = choices.filter((key) => this.clips[key]);
+      name = available[Math.floor(Math.random() * available.length)] || this.moveSets.jab[0];
+    }
     const next = this.clips[name];
     if (!next) return;
     next.reset();
@@ -422,6 +442,14 @@ class Fighter {
     this.state = 'attack';
     this.setMoveLabel(m.label);
     this.hitLanded = false;
+    if (this.custom) {
+      this.play(id, false, 1.2);
+      const duration = Math.max(0.5, (this.current?.getClip().duration || 1) / 1.2);
+      this.busyUntil = now + duration * 0.95;
+      this.cooldown = 0.6 + Math.random() * 0.5;
+      this.pendingHit = { at: now + duration * 0.2, until: now + duration * 0.85, target: this.target, limb: id === 'kick' ? 'foot' : 'hand', move: id, window: true };
+      return;
+    }
     if (id === 'kick') {
       const scale = m.timeScale || 1.3;
       const ok = this.beginXbotKick(scale);
@@ -464,7 +492,7 @@ class Fighter {
     this.mixer.update(dt);
     if (this.xbotMixer && this.usingXbot) this.xbotMixer.update(dt);
 
-    if (this.move === 'kick' && !this.usingXbot) this.applyKickPose(now);
+    if (!this.custom && this.move === 'kick' && !this.usingXbot) this.applyKickPose(now);
     else if (this.kickDur > 0 && this.move !== 'kick') { this.resetKickBones(); this.kickDur = 0; }
 
     if (!this.alive) return;
@@ -629,7 +657,7 @@ function ensureXbotLoaded() {
       if (!clip) throw new Error('no animation in xbot glb');
       xbotTemplate = { scene: spinGltf.scene, clip };
       for (const f of fighters) {
-        if (!f.xbot) f.attachXbot(xbotTemplate);
+        if (!f.custom && !f.xbot) f.attachXbot(xbotTemplate);
       }
       console.info('xbot kick loaded', clip.name, 'dur', clip.duration, 'tracks', clip.tracks.length);
       return xbotTemplate;
@@ -645,7 +673,18 @@ function ensureXbotLoaded() {
 async function spawn(spec, index, total) {
   const gltf = await loadGltf(spec.url);
   // Clone so two roster entries sharing a URL get independent skeletons/meshes
-  const root = SkeletonUtils.clone(gltf.scene);
+  const model = SkeletonUtils.clone(gltf.scene);
+  const root = new THREE.Group();
+  root.add(model);
+  if (spec.custom) {
+    const box = new THREE.Box3().setFromObject(model);
+    const height = box.max.y - box.min.y;
+    if (height > 0) {
+      const scale = spec.custom === 'mewtwo' ? 4 : 100;
+      model.scale.multiplyScalar(scale);
+      model.position.y = 0;
+    }
+  }
   root.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -659,13 +698,24 @@ async function spawn(spec, index, total) {
   const mixer = new THREE.AnimationMixer(root);
   const actions = {};
   for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+  if (spec.custom) {
+    const names = [...new Set(Object.values(spec.custom === 'gundam' ? GUNDAM_MOVES : MEWTWO_MOVES).flat())];
+    const results = await Promise.allSettled(names.map((name) => loadGltf(`models/${spec.custom}/${name}.glb`)));
+    results.forEach((result, i) => {
+      if (result.status === 'fulfilled' && result.value.animations[0]) {
+        const clip = result.value.animations[0].clone();
+        clip.tracks = clip.tracks.filter((track) => !/^Armature\.(position|quaternion|scale)$/.test(track.name));
+        actions[names[i]] = mixer.clipAction(clip);
+      } else if (result.status === 'rejected') console.warn('Animation unavailable:', names[i], result.reason);
+    });
+  }
   const clips = clipMap(actions, spec.tag);
   const ang = (index / total) * Math.PI * 2;
   root.position.set(Math.cos(ang) * 3.2, 0, Math.sin(ang) * 3.2);
   root.rotation.y = ang + Math.PI;
   scene.add(root);
-  const f = new Fighter(root, mixer, clips, spec.name, spec.tint);
-  if (xbotTemplate) f.attachXbot(xbotTemplate);
+  const f = new Fighter(root, mixer, clips, spec.name, spec.tint, spec.custom);
+  if (xbotTemplate && !spec.custom) f.attachXbot(xbotTemplate);
   return f;
 }
 

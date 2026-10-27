@@ -1,29 +1,18 @@
 # PSX Auto Fight
 
-Simple Three.js **auto mode** demo: four low-poly characters fight with 直拳／重拳／旋風腳.
+A Three.js auto-fight demo with PSX People, Mewtwo and Gundam. Fighters move and use hand and foot contact to attack; Mewtwo and Gundam use a variety of Mixamo capoeira animations, with boxing and an MMA kick for Mewtwo.
 
-## Moves
-
-- **直拳 / 重拳** — PSX People `attack` clip + hand bone contact
-- **旋風腳** — Mixamo [Spin Flip Kick](https://www.mixamo.com/) retargeted onto PSX People bones (`models/spin_flip_kick.glb`)
-
-Contact hits require Hand/Foot vs opponent Hips/Spine/Head.
-
-## Credits
-
-- [PSX People Free](https://heyheythere.itch.io/psx-people-free) by heyheythere — CC BY 4.0
-- Kick animation: Adobe Mixamo — Spin Flip Kick (motion only)
-
-## Local
+## Local development
 
 ```bash
 npm start
 ```
 
-Open the printed URL (models need HTTP, not `file://`).
+Open the printed URL. Models require HTTP; opening `index.html` directly will not load them.
 
-## Assets for upload
+## Credits
 
-- `models/spin_flip_kick.glb` — retargeted clip (PSX bone names)
-- `models/spin_flip_kick.fbx` — original Mixamo FBX
-- `assets/mixamo/` — copies of both
+- [PSX People Free](https://heyheythere.itch.io/psx-people-free) by heyheythere, CC BY 4.0.
+- [Mewtwo (SSB4)](https://sketchfab.com/3d-models/mewtwo-ssb4-8f4a435e109e48fba91b7ed3a6e84a0a) by [雨宮レン](https://sketchfab.com/oscar3dmodel), CC BY 4.0. Modified for the game: animation, scale and glTF conversion.
+- [Gundam Evolution RX 78-2](https://sketchfab.com/3d-models/gundam-evolution-rx-78-2-c98e4d4382434ea280ab33a2bb6beb05) by NAJWAN_ID, CC BY 4.0. Modified for the game: re-rigged, animated, retextured and converted to glTF.
+- Fight animations: [Adobe Mixamo](https://www.mixamo.com/).
