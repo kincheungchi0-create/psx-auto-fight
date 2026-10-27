@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://cod2qq8sw6usp"]
+
+[ext_resource type="Resource" uid="uid://bwb7upikhh86d" path="res://Fighters/Kaede/AnimationData/36_Kaede_Dizzy_AnimData.tres" id="1_vxddt"]
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="2_vxddt"]
+
+[resource]
+script = ExtResource("2_vxddt")
+StateName = "Defeat"
+Type = 5
+AnimationData = ExtResource("1_vxddt")
+TransitionEvents = null
+OnEnterEvents = null
+OnTickEvents = null
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+metadata/_custom_type_script = "uid://bf60srwkccsm8"

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://sl2nuo3lopg0"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+[ext_resource type="Resource" uid="uid://bvh2jb1aeuoq3" path="res://Fighters/Kaede/AnimationData/56_Kaede_j5C_AnimData.tres" id="1_yaq6y"]
+[ext_resource type="Resource" uid="uid://dciieeb78vr5v" path="res://Fighters/Kaede/FrameDataEvents/Template_Gravity.tres" id="2_12u2r"]
+[ext_resource type="Resource" uid="uid://04a4bhxrfvo6" path="res://Fighters/Kaede/FrameDataEvents/Template_Trans_Airborne.tres" id="2_kxp75"]
+[ext_resource type="Resource" uid="uid://bvxyesd7vmtp" path="res://Fighters/Kaede/FrameDataEvents/Template_Trans_Landing.tres" id="3_12u2r"]
+
+[resource]
+script = ExtResource("1")
+StateName = "j_5C"
+Type = 2
+AnimationData = ExtResource("1_yaq6y")
+TransitionEvents = Array[Object]([ExtResource("2_kxp75"), ExtResource("3_12u2r")])
+OnEnterEvents = null
+OnTickEvents = Array[Object]([ExtResource("2_12u2r")])
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 20

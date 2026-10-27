@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://bk10df3h23sqs"]
+
+[ext_resource type="Resource" uid="uid://b5krk7bg6spju" path="res://Fighters/Kaede/AnimationData/65_Kaede_Throw_AnimData.tres" id="1_ojn4h"]
+[ext_resource type="Script" uid="uid://da4kqpf635oin" path="res://Scripts/SakugaEngine/Resources/FrameDataEvents/Actions/PlayStateAction.cs" id="2_54qfl"]
+[ext_resource type="Script" uid="uid://n7xih8pqfpwo" path="res://Scripts/SakugaEngine/Resources/FrameDataEvents/Actions/ChangeSideAction.cs" id="2_hmprx"]
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="2_s0rim"]
+[ext_resource type="Script" uid="uid://c076jc3huncn2" path="res://Scripts/SakugaEngine/Resources/FrameDataEvents/FrameDataEvent.cs" id="3_hmprx"]
+[ext_resource type="Resource" uid="uid://nvkiyhr0b8sx" path="res://Fighters/Kaede/FrameDataEvents/Template_Trans_Idle.tres" id="4_7gnqj"]
+
+[sub_resource type="Resource" id="Resource_uhin5"]
+script = ExtResource("2_hmprx")
+metadata/_custom_type_script = "uid://n7xih8pqfpwo"
+
+[sub_resource type="Resource" id="Resource_q8i2b"]
+script = ExtResource("3_hmprx")
+Conditions = null
+Actions = Array[Object]([SubResource("Resource_uhin5")])
+metadata/_custom_type_script = "uid://c076jc3huncn2"
+
+[sub_resource type="Resource" id="Resource_qitbi"]
+script = ExtResource("2_54qfl")
+StateIndex = 60
+metadata/_custom_type_script = "uid://da4kqpf635oin"
+
+[sub_resource type="Resource" id="Resource_jdsy1"]
+script = ExtResource("3_hmprx")
+Conditions = null
+Actions = Array[Object]([SubResource("Resource_qitbi")])
+metadata/_custom_type_script = "uid://c076jc3huncn2"
+
+[resource]
+script = ExtResource("2_s0rim")
+StateName = "Throw_Enter"
+Type = 2
+AnimationData = ExtResource("1_ojn4h")
+TransitionEvents = Array[Object]([ExtResource("4_7gnqj")])
+OnEnterEvents = Array[Object]([SubResource("Resource_q8i2b")])
+OnTickEvents = null
+OnExitEvents = null
+OnHitConfirmEvents = Array[Object]([SubResource("Resource_jdsy1")])
+OnHitReactionEvents = null
+AIFlags = 18

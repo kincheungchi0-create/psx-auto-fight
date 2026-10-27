@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="HitboxSettings" format=3 uid="uid://b5x4otrs0q04d"]
+
+[ext_resource type="Script" uid="uid://dxuwyhds75mce" path="res://Scripts/SakugaEngine/Resources/HitboxSettings.cs" id="1_7s4vp"]
+[ext_resource type="Script" uid="uid://c0y740kryylcs" path="res://Scripts/SakugaEngine/Resources/HitboxElement.cs" id="1_a68yr"]
+
+[sub_resource type="Resource" id="Resource_tm223"]
+script = ExtResource("1_a68yr")
+Center = Vector2i(5000, 5000)
+Size = Vector2i(12000, 10000)
+AirBlockKnockbackGravity = 300000
+SelfPushbackForce = 0
+SelfPushbackDuration = 0
+BounceXIntensity = 0
+BounceYIntensity = 0
+
+[resource]
+script = ExtResource("1_7s4vp")
+Hitboxes = [SubResource("Resource_tm223")]

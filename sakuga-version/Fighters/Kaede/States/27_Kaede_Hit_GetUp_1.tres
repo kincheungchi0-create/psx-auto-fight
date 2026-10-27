@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://bfv01m42n1xo"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+[ext_resource type="Resource" uid="uid://2dmyao20hlhv" path="res://Fighters/Kaede/AnimationData/32_Kaede_GetUp_AnimData.tres" id="1_gcyba"]
+[ext_resource type="Resource" uid="uid://nvkiyhr0b8sx" path="res://Fighters/Kaede/FrameDataEvents/Template_Trans_Idle.tres" id="2_xtfx1"]
+
+[resource]
+script = ExtResource("1")
+StateName = "Hit_GetUp"
+AnimationData = ExtResource("1_gcyba")
+TransitionEvents = Array[Object]([ExtResource("2_xtfx1")])
+OnEnterEvents = null
+OnTickEvents = null
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 1

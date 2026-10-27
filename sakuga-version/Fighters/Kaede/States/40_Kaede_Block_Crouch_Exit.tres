@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://7p6avtixv2em"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+[ext_resource type="Resource" uid="uid://bomgdt56i3x8" path="res://Fighters/Kaede/AnimationData/42_Kaede_Block_Crouch_Exit_AnimData.tres" id="1_devie"]
+[ext_resource type="Resource" uid="uid://bo710qx800303" path="res://Fighters/Kaede/FrameDataEvents/Template_Trans_Crouch.tres" id="2_wc0rv"]
+
+[resource]
+script = ExtResource("1")
+StateName = "Block_Crouch_Exit"
+BaseStance = 1
+AnimationData = ExtResource("1_devie")
+TransitionEvents = Array[Object]([ExtResource("2_wc0rv")])
+OnEnterEvents = null
+OnTickEvents = null
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 1

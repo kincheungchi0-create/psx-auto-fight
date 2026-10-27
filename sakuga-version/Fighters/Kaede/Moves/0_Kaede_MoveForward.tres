@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="MoveSettings" load_steps=3 format=3 uid="uid://b1uqbm5bepxhv"]
+
+[ext_resource type="Resource" uid="uid://bee5nhkcto5wb" path="res://Fighters/Shared/Inputs/0_Input_6.tres" id="1_de42l"]
+[ext_resource type="Script" uid="uid://gk1rkw667o4n" path="res://Scripts/SakugaEngine/Resources/MoveSettings.cs" id="1_q1rb6"]
+
+[resource]
+script = ExtResource("1_q1rb6")
+MoveName = "Move Forward"
+MoveState = 1
+Inputs = ExtResource("1_de42l")
+SideChange = 2
+BuildSuperGauge = 2
+buttonChargeSequence = null
+ExtraVariablesRequirement = null
+ExtraVariablesChange = null
+MoveEnd = 1
+MoveEndState = 0
+CanBeOverrided = true
+PriorityBuffer = true
+UseOnGround = true

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://c2ebq2igw582c"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+[ext_resource type="Resource" uid="uid://3r8rf1v54h6x" path="res://Fighters/Kaede/AnimationData/38_Kaede_Block_Neutral_Exit_AnimData.tres" id="1_5l4jf"]
+[ext_resource type="Resource" uid="uid://nvkiyhr0b8sx" path="res://Fighters/Kaede/FrameDataEvents/Template_Trans_Idle.tres" id="2_4tjp5"]
+
+[resource]
+script = ExtResource("1")
+StateName = "Block_Neutral_Exit"
+AnimationData = ExtResource("1_5l4jf")
+TransitionEvents = Array[Object]([ExtResource("2_4tjp5")])
+OnEnterEvents = null
+OnTickEvents = null
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 1

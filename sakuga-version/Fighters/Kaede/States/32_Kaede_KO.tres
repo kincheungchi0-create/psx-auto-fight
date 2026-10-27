@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://cqldypu3kwqtg"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+[ext_resource type="Resource" uid="uid://ciwsfe2tjpvf" path="res://Fighters/Kaede/AnimationData/31_Kaede_Hit_Down_AnimData.tres" id="1_ngrvk"]
+
+[resource]
+script = ExtResource("1")
+StateName = "Hit_Ded"
+AnimationData = ExtResource("1_ngrvk")
+TransitionEvents = null
+OnEnterEvents = null
+OnTickEvents = null
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 161

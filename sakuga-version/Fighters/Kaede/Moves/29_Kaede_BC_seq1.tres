@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="MoveSettings" load_steps=3 format=3 uid="uid://bja7x262w5nw7"]
+
+[ext_resource type="Resource" uid="uid://brpwt20vo7l6k" path="res://Fighters/Shared/Inputs/26_Input_]BC[.tres" id="1_wkqe3"]
+[ext_resource type="Script" uid="uid://gk1rkw667o4n" path="res://Scripts/SakugaEngine/Resources/MoveSettings.cs" id="2_r4pf5"]
+
+[resource]
+script = ExtResource("2_r4pf5")
+MoveName = "BC_seq1"
+MoveState = 48
+SkipCheck = true
+Inputs = ExtResource("1_wkqe3")
+IsSequenceFromStates = PackedInt32Array(58)
+CanCancelTo = null
+ExtraVariablesRequirement = null
+ExtraVariablesChange = null
+MoveEnd = 2
+Priority = 5
+AcceptNullStates = true
+AcceptCombatStates = true
+UseOnGround = true

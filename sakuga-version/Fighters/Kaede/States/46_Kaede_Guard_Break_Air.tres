@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://bryckhl72yyka"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+[ext_resource type="Resource" uid="uid://dciieeb78vr5v" path="res://Fighters/Kaede/FrameDataEvents/Template_Gravity.tres" id="1_jd41j"]
+
+[resource]
+script = ExtResource("1")
+StateName = "Falling"
+BaseStance = 2
+Type = 4
+TransitionEvents = null
+OnEnterEvents = null
+OnTickEvents = Array[Object]([ExtResource("1_jd41j")])
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 36

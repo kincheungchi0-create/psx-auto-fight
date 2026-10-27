@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://ds4iga01tk4iw"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+[ext_resource type="Resource" uid="uid://bqrxtdb7hov0" path="res://Fighters/Kaede/AnimationData/10_Kaede_Falling_AnimData.tres" id="1_cup6h"]
+[ext_resource type="Resource" uid="uid://dciieeb78vr5v" path="res://Fighters/Kaede/FrameDataEvents/Template_Gravity.tres" id="2_tq54u"]
+[ext_resource type="Resource" uid="uid://55yjftrn24fk" path="res://Fighters/Kaede/FrameDataEvents/Template_Loop.tres" id="3_tq54u"]
+[ext_resource type="Resource" uid="uid://bvxyesd7vmtp" path="res://Fighters/Kaede/FrameDataEvents/Template_Trans_Landing.tres" id="4_x5h21"]
+
+[resource]
+script = ExtResource("1")
+StateName = "Falling"
+Type = 1
+AnimationData = ExtResource("1_cup6h")
+TransitionEvents = Array[Object]([ExtResource("3_tq54u"), ExtResource("4_x5h21")])
+OnEnterEvents = null
+OnTickEvents = Array[Object]([ExtResource("2_tq54u")])
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 1

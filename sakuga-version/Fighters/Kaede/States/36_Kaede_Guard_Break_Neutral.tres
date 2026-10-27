@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FighterState" format=3 uid="uid://dn0a8gr8v05gc"]
+
+[ext_resource type="Script" uid="uid://bf60srwkccsm8" path="res://Scripts/SakugaEngine/Resources/FighterState.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+StateName = "Hit_Weak"
+Type = 4
+TransitionEvents = null
+OnEnterEvents = null
+OnTickEvents = null
+OnExitEvents = null
+OnHitConfirmEvents = null
+OnHitReactionEvents = null
+AIFlags = 34
