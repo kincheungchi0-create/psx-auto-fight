@@ -26,7 +26,7 @@
     <div id="status">Loading…</div>
   </div>
   <div id="credit">
-    Models: <a href="https://heyheythere.itch.io/psx-people-free" target="_blank" rel="noopener">PSX People Free</a> · <a href="https://sketchfab.com/3d-models/mewtwo-ssb4-8f4a435e109e48fba91b7ed3a6e84a0a" target="_blank" rel="noopener">Mewtwo by 雨宮レン (modified)</a> · <a href="https://sketchfab.com/3d-models/gundam-evolution-rx-78-2-c98e4d4382434ea280ab33a2bb6beb05" target="_blank" rel="noopener">Gundam by NAJWAN_ID (modified)</a> · Animations: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Adobe Mixamo</a> · CC BY 4.0
+    Models: <a href="https://sketchfab.com/3d-models/mewtwo-ssb4-8f4a435e109e48fba91b7ed3a6e84a0a" target="_blank" rel="noopener">Mewtwo by 雨宮レン (modified)</a> · <a href="https://sketchfab.com/3d-models/gundam-evolution-rx-78-2-c98e4d4382434ea280ab33a2bb6beb05" target="_blank" rel="noopener">Gundam by NAJWAN_ID (modified)</a> · Animations: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Adobe Mixamo</a> · CC BY 4.0
   </div>
   <script type="importmap">
   {
@@ -89,10 +89,6 @@ scene.add(ring);
 const ROSTER = [
   { url: 'models/mewtwo/character.glb', tag: 'mewtwo', name: 'Mewtwo', tint: 0xc77dff, custom: 'mewtwo' },
   { url: 'models/gundam/character.glb', tag: 'gundam', name: 'Gundam', tint: 0x80edff, custom: 'gundam' },
-  { url: 'models/office_worker.glb', tag: 'office_worker', name: 'Office A', tint: 0x8ecae6 },
-  { url: 'models/survivor_woman.glb', tag: 'survivor_woman', name: 'Survivor A', tint: 0xffb703 },
-  { url: 'models/office_worker.glb', tag: 'office_worker', name: 'Office B', tint: 0x219ebc },
-  { url: 'models/survivor_woman.glb', tag: 'survivor_woman', name: 'Survivor B', tint: 0xfb8500 },
 ];
 
 const MEWTWO_MOVES = {
@@ -763,7 +759,7 @@ async function main() {
   pickTargets();
 
   // X Bot (~meshopt) loads in background — kick falls back to procedural until ready
-  ensureXbotLoaded();
+  if (fighters.some((f) => !f.custom)) ensureXbotLoaded();
 
   const clock = new THREE.Clock();
   function tick() {
@@ -773,7 +769,7 @@ async function main() {
     pickTargets();
     maybeReset(now);
     const hp = fighters.map((f) => `${f.name} ${f.alive ? Math.ceil(f.hp) : 'KO'}`).join(' · ');
-    setStatus(xbotTemplate ? hp : (hp + ' · 旋風腳載入中…'));
+    setStatus(hp);
     controls.update();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
