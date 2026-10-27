@@ -1,5 +1,6 @@
 import { FightingEngine } from './fighting-engine.mjs';
 import { findContact } from './contact.mjs';
+import { applyCombatReaction } from './combat-reaction.mjs';
 
 const B = window.BABYLON;
 const status = document.getElementById('status');
@@ -32,6 +33,8 @@ const defs = [
 const fighters = [];
 let match;
 let impactPauseUntil = 0;
+let combatNotice = '';
+let combatNoticeUntil = 0;
 const sparks = [];
 const sparkMaterial = new B.StandardMaterial('impact', scene);
 sparkMaterial.emissiveColor = B.Color3.FromHexString('#ffe17a');
@@ -99,7 +102,7 @@ async function loadFighter(spec, index) {
   return f;
 }
 function resetRound() {
-  fighters.forEach((f,i) => { f.hp=100; f.alive=true; f.state='idle'; f.busyUntil=0; f.cooldown=.7+i*.3; f.pendingHit=null; f.root.position.set(i === 0 ? -3 : 3,0,0); f.pose.rotation.x=0; f.target=fighters[1-i]; f.face(); f.play('idle'); });
+  fighters.forEach((f,i) => { f.hp=100; f.alive=true; f.state='idle'; f.busyUntil=0; f.cooldown=.7+i*.3; f.pendingHit=null; f.blockUntil=0; f.root.position.set(i === 0 ? -3 : 3,0,0); f.pose.rotation.x=0; f.target=fighters[1-i]; f.face(); f.play('idle'); });
 }
 function startAttack(f, now) {
   const kind = pick(['jab','heavy','kick']); const limb = f.spec.folder === 'sketchgirl' ? 'foot' : kind === 'kick' ? 'foot' : 'hand';
@@ -118,11 +121,20 @@ function updateFighter(f, dt, now) {
     const touch=findContact(keys.map(key=>({key,p:f.point(key)})),['hips','spine','head'].map(key=>p.target.point(key)),p.limb==='foot'?.38:.34,p.history);
     if (now>=p.at && now<=p.until) {
       const hit=match.tryHit(f,p.target,now,!!touch);
-      if (hit) { f.pendingHit=null; if (!hit.dodged) showImpact(touch.point,now); if (!hit.dodged && !hit.blocked) { const t=p.target; t.pendingHit=null; t.state=t.hp<=0?'death':'hit'; t.alive=t.hp>0; t.reactionStart=now; t.busyUntil=now+.585; t.pose.rotation.x=t.alive?-.15:0; t.play('idle'); } }
+      if (hit) {
+        f.pendingHit = null;
+        if (!hit.dodged) {
+          showImpact(touch.point, now);
+          const reaction = applyCombatReaction(p.target, hit, now);
+          combatNotice = `${p.target.name}：${reaction}`;
+          combatNoticeUntil = now + 0.8;
+        }
+      }
     }
     if (now>p.until) f.pendingHit=null;
   }
   if (f.state==='hit' || f.state==='death') { const t=Math.min(1,(now-f.reactionStart)/.5); f.pose.rotation.x=-(f.state==='death'?1.25*t:.35*Math.sin(Math.PI*(.14+.86*t))); }
+  else if (f.blockUntil && now < f.blockUntil) f.pose.rotation.x = -0.2 * Math.min(1, (f.blockUntil - now) / .15);
   else f.pose.rotation.x=0;
   if (now<f.busyUntil) return;
   if (f.state==='attack') { match.cancelAttack(f); f.pendingHit=null; f.state='idle'; f.play('idle'); }
@@ -157,7 +169,7 @@ async function main() {
     } else fighters.forEach(f=>{f.advanceBlend(dt);f.center(); if(!f.alive)f.pose.rotation.x=-1.25*Math.min(1,(now-f.reactionStart)/.45);});
     fighters.forEach((f,i)=>document.getElementById(`health${i}`).style.width=`${Math.max(0,f.hp)}%`);
     document.getElementById('timer').textContent=Math.ceil(match.remaining); document.getElementById('score').textContent=match.scores.join(' : ');
-    status.textContent=match.phase==='ready'?`第 ${match.round} 回合 — 準備！`:match.phase==='fight'?'':match.result;
+    status.textContent=match.phase==='ready'?`第 ${match.round} 回合 — 準備！`:match.phase==='fight'?(now < combatNoticeUntil ? combatNotice : ''):match.result;
   });
   engine.runRenderLoop(()=>{ scene.animationsEnabled = performance.now()/1000 >= impactPauseUntil; scene.render(); });
 }
