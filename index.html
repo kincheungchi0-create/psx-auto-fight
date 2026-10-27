@@ -22,11 +22,11 @@
 </head>
 <body>
   <div id="hud">
-    <div><b>Auto mode</b> — 直拳／重拳／掃踢（手腳骨碰撞）</div>
+    <div><b>Auto mode</b> — 直拳／重拳／旋風腳 Mixamo（手腳骨碰撞）</div>
     <div id="status">Loading…</div>
   </div>
   <div id="credit">
-    Models: <a href="https://heyheythere.itch.io/psx-people-free" target="_blank" rel="noopener">PSX People Free</a> by heyheythere · CC BY 4.0
+    Models: <a href="https://heyheythere.itch.io/psx-people-free" target="_blank" rel="noopener">PSX People Free</a> · Kick: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Mixamo Spin Flip Kick</a> · CC BY 4.0
   </div>
   <script type="importmap">
   {
@@ -105,13 +105,40 @@ function clipMap(gltfActions, tag) {
 const ATTACK_ENTER = 0.78;
 const ATTACK_STOP = 0.50;
 const HAND_HIT_R = 0.42;
-const FOOT_HIT_R = 0.48;
+const FOOT_HIT_R = 0.52;
 
 const MOVES = {
   jab:   { label: '直拳', limb: 'hand', dmg: [12, 18], dur: 0.55, hitAt: 0.28, enter: 0.78, step: 0.5 },
   heavy: { label: '重拳', limb: 'hand', dmg: [22, 30], dur: 0.85, hitAt: 0.42, enter: 0.82, step: 0.35 },
-  kick:  { label: '掃踢', limb: 'foot', dmg: [18, 26], dur: 0.70, hitAt: 0.36, enter: 0.90, step: 0.45 },
+  // Mixamo Spin Flip Kick retargeted onto PSX bones (spin_flip_kick.glb)
+  kick:  { label: '旋風腳', limb: 'foot', dmg: [20, 32], dur: 1.55, hitAt: 0.55, hitEnd: 1.15, enter: 0.95, step: 0.55, clip: 'spin_kick', timeScale: 2.35 },
 };
+
+/** Prepare Mixamo→PSX retargeted clip for a character mixer (bone-name tracks). */
+function prepareSpinClip(srcClip) {
+  const tracks = [];
+  for (const t of srcClip.tracks) {
+    let name = t.name;
+    // strip armature / path prefixes if present
+    const dot = name.lastIndexOf('.');
+    if (dot < 0) continue;
+    const prop = name.slice(dot + 1);
+    let bone = name.slice(0, dot);
+    if (bone.includes('/')) bone = bone.split('/').pop();
+    if (bone.includes('|')) bone = bone.split('|').pop();
+    if (prop === 'scale') continue;
+    if (prop === 'position' || prop === 'translation') {
+      // Root motion stripped at export (Mixamo was cm-scale); keep fighter planted
+      continue;
+    }
+    // rotation / quaternion
+    const nt = t.clone();
+    nt.name = bone + '.' + (prop === 'rotation' ? 'quaternion' : prop);
+    tracks.push(nt);
+  }
+  const dur = srcClip.duration || 3.7;
+  return new THREE.AnimationClip('spin_flip_kick', dur, tracks);
+}
 
 function findBone(root, name) {
   let found = null;
@@ -313,8 +340,8 @@ class Fighter {
 
   pickMove() {
     const roll = Math.random();
-    if (roll < 0.40) return 'jab';
-    if (roll < 0.70) return 'kick';
+    if (roll < 0.34) return 'jab';
+    if (roll < 0.72) return 'kick'; // 旋風腳 (Mixamo)
     return 'heavy';
   }
 
@@ -323,8 +350,27 @@ class Fighter {
     this.move = id;
     this.state = 'attack';
     this.setMoveLabel(m.label);
-    if (id === 'kick') {
-      // hold idle while procedural kick runs on bones
+    this.hitLanded = false;
+    if (id === 'kick' && this.clips.spin_kick) {
+      // Mixamo Spin Flip Kick (retargeted PSX bones)
+      const scale = m.timeScale || 2.2;
+      this.play('spin_kick', false, scale);
+      const clipDur = (this.clips.spin_kick.getClip().duration || 3.7) / scale;
+      const dur = Math.min(m.dur, clipDur * 0.98);
+      this.kickT = now;
+      this.kickDur = 0; // disable procedural overlay
+      this.busyUntil = now + dur;
+      this.cooldown = 0.85 + Math.random() * 0.45;
+      this.pendingHit = {
+        at: now + m.hitAt,
+        until: now + (m.hitEnd || m.hitAt + 0.35),
+        target: this.target,
+        limb: 'foot',
+        move: id,
+        window: true,
+      };
+    } else if (id === 'kick') {
+      // fallback procedural if clip missing
       this.play('idle', true, 0.3);
       this.kickSide = Math.random() < 0.5 ? 'l' : 'r';
       this.kickT = now;
@@ -353,14 +399,29 @@ class Fighter {
 
     if (this.pendingHit && now >= this.pendingHit.at) {
       const ph = this.pendingHit;
-      this.pendingHit = null;
       const tgt = ph.target;
       const m = MOVES[ph.move] || MOVES.jab;
-      if (this.alive && tgt?.alive) {
-        const touch = this.limbsTouch(tgt, ph.limb);
-        if (touch.ok) {
-          const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
-          tgt.takeHit(dmg, now, this, m.label);
+      if (ph.window) {
+        // spinning kick: poll Foot vs Hips/Spine/Head until hitEnd or land once
+        if (this.hitLanded || !this.alive || !tgt?.alive || now > (ph.until || ph.at)) {
+          this.pendingHit = null;
+        } else {
+          const touch = this.limbsTouch(tgt, ph.limb);
+          if (touch.ok) {
+            this.hitLanded = true;
+            this.pendingHit = null;
+            const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
+            tgt.takeHit(dmg, now, this, m.label);
+          }
+        }
+      } else {
+        this.pendingHit = null;
+        if (this.alive && tgt?.alive) {
+          const touch = this.limbsTouch(tgt, ph.limb);
+          if (touch.ok) {
+            const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
+            tgt.takeHit(dmg, now, this, m.label);
+          }
         }
       }
     }
@@ -443,7 +504,7 @@ class Fighter {
       const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
       if (dir.lengthSq() > 1e-6) {
         dir.normalize();
-        me.addScaledVector(dir, moveLabel === '重拳' || moveLabel === '掃踢' ? 0.32 : 0.18);
+        me.addScaledVector(dir, moveLabel === '重拳' || moveLabel === '旋風腳' || moveLabel === '掃踢' ? 0.36 : 0.18);
       }
     }
     if (this.hp <= 0) {
@@ -474,6 +535,7 @@ class Fighter {
 const loader = new GLTFLoader();
 const fighters = [];
 let resetting = false;
+let sharedSpinClip = null;
 
 async function spawn(spec, index, total) {
   const gltf = await loader.loadAsync(spec.url);
@@ -492,6 +554,10 @@ async function spawn(spec, index, total) {
   const actions = {};
   for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
   const clips = clipMap(actions, spec.tag);
+  if (sharedSpinClip) {
+    clips.spin_kick = mixer.clipAction(sharedSpinClip);
+    clips.spin_kick.clampWhenFinished = true;
+  }
   const ang = (index / total) * Math.PI * 2;
   root.position.set(Math.cos(ang) * 3.2, 0, Math.sin(ang) * 3.2);
   // face center
@@ -535,6 +601,15 @@ function maybeReset(now) {
 }
 
 async function main() {
+  setStatus('Loading Mixamo 旋風腳…');
+  try {
+    const spinGltf = await loader.loadAsync('models/spin_flip_kick.glb');
+    const raw = spinGltf.animations.find((a) => /spin/i.test(a.name)) || spinGltf.animations[0];
+    if (raw) sharedSpinClip = prepareSpinClip(raw);
+    console.info('spin_flip_kick loaded', sharedSpinClip?.duration, 'tracks', sharedSpinClip?.tracks?.length);
+  } catch (e) {
+    console.warn('spin_flip_kick missing, procedural kick fallback', e);
+  }
   setStatus('Loading characters…');
   for (let i = 0; i < ROSTER.length; i++) {
     fighters.push(await spawn(ROSTER[i], i, ROSTER.length));
