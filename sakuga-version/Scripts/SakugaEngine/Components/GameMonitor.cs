@@ -379,7 +379,7 @@ namespace SakugaEngine
             }
             else if (Winner == 1)
             {
-                winP2.GetNode<Label>("NamePlayer2").Text = "Kung Fu Fighter";
+                winP2.GetNode<Label>("NamePlayer2").Text = "Anime Girl";
                 winP1.Visible = false;
             }
             WinnerRender.Visible = false;

@@ -219,7 +219,7 @@ namespace SakugaEngine.Game
             mesh.GetNode<Node3D>("KaedeGraphics/Sprite3D").Visible = false;
             var visual = new CharacterVisual { Name = "FighterVisual" };
             mesh.AddChild(visual);
-            visual.Initialize(playerIndex == 0);
+            visual.Initialize(true); // Girl vs girl; pass playerIndex == 0 to bring back the Kung Fu fighter as P2.
             Fighters[playerIndex].Name = playerIndex + "_Fighter_" + Fighters[playerIndex].Data.Profile.ShortName;
             Fighters[playerIndex].Inputs = Inputs[playerIndex];
             Fighters[playerIndex].InitializeBrain(AIcontrolled, Match.Difficulty);

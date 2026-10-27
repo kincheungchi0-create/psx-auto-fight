@@ -43,7 +43,7 @@ namespace SakugaEngine.UI
             if (fighters[1].Data.Profile.Portrait != null)
             {
                 P2Portrait.Visible = false;
-                P2Name.Text = "Kung Fu Fighter";
+                P2Name.Text = "Anime Girl";
             }
 
             P1Rounds.Setup();

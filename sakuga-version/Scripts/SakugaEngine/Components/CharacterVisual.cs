@@ -9,7 +9,7 @@ namespace SakugaEngine
     // Render a 3D model from Sakuga's deterministic animation state and frame.
     public partial class CharacterVisual : Node3D
     {
-        private enum Mode { Loop, Attack, Guard, Hit, Down, GetUp }
+        private enum Mode { Loop, Attack, Guard, Hit, Down, GetUp, React, Fall, Rise }
 
         private Node3D model;
         private AnimationPlayer animationPlayer;
@@ -21,14 +21,20 @@ namespace SakugaEngine
         private bool calibrated;
         private float guardTime, downTime, downTilt = 85;
         private string downClip;
+        private float lyingTime, riseStart, riseEnd;
         private readonly Dictionary<string, float> impactTimes = new();
         private int loopTick, lastFrame = -1;
         private string lastSource = "";
 
         // The Kung Fu attacks all start from "idle guard2"'s stance; "idle guard" is the opposite lead and snaps the body around.
-        private string IdleClip => girl ? "ginga_forward" : "Kung Fu idle guard2";
-        private string GuardClip => girl ? "ginga_forward" : "Kung Fu idle guard2";
-        private string ShowClip => girl ? "capoeira" : "Kung Fu idle drunk";
+        private string IdleClip => girl ? "idle" : "Kung Fu idle guard2";
+        private string GuardClip => girl ? "block" : "Kung Fu idle guard2";
+        private string ShowClip => girl ? "victory" : "Kung Fu idle drunk";
+
+        private static readonly string[] AttackSources = { "5A", "5B", "5C", "2A", "2B", "2C", "j_5A", "j_5B", "j_5C", "66B", "236C_1", "236C_2", "236C_3", "623B", "623B_2", "236236A", "Throw_Enter", "Throw_Sequence" };
+        // Capoeira clips are .glb next to the model; the upright boxing/MMA set from Mixamo is .fbx in mixamo/.
+        private static readonly string[] GirlGlbClips = { "chapa_2", "bencao", "ginga_forward" };
+        private static readonly string[] GirlFbxClips = { "idle", "walk_forward", "walk_backward", "run", "jab", "jab_cross", "uppercut", "roundhouse", "low_kick", "hurricane_kick", "block", "hit_light", "hit_big", "knockdown", "get_up", "victory" };
 
         public void Initialize(bool useGirl)
         {
@@ -77,29 +83,64 @@ namespace SakugaEngine
             animationPlayer.RootNode = new NodePath("..");
             var library = new AnimationLibrary();
             animationPlayer.AddAnimationLibrary("", library);
-            foreach (string clip in new[] { "capoeira", "bencao", "chapa_2", "ginga_forward" })
+            var paths = new List<(string clip, string path)>();
+            foreach (string clip in GirlGlbClips) paths.Add((clip, $"res://Models/AnimeGirl/{clip}.glb"));
+            foreach (string clip in GirlFbxClips) paths.Add((clip, $"res://Models/AnimeGirl/mixamo/{clip}.fbx"));
+            foreach (var (clip, file) in paths)
             {
-                var packed = GD.Load<PackedScene>($"res://Models/AnimeGirl/{clip}.glb");
+                var packed = GD.Load<PackedScene>(file);
+                if (packed == null) { GD.PushError($"Missing animation {clip}"); continue; }
                 var source = packed.Instantiate();
                 var player = FindNodeOfType<AnimationPlayer>(source);
                 if (player == null || player.GetAnimationList().Length == 0) { GD.PushError($"Missing animation {clip}"); source.Free(); continue; }
                 var animation = (Animation)player.GetAnimation(player.GetAnimationList()[0]).Duplicate(true);
+                var sourceSkeleton = FindNodeOfType<Skeleton3D>(source);
+                Transform3D sourceSpace = sourceSkeleton != null ? SceneTransform(source, sourceSkeleton) : Transform3D.Identity;
+                Transform3D targetSpace = SceneTransform(model, skeleton);
                 for (int i = animation.GetTrackCount() - 1; i >= 0; i--)
                 {
                     var path = animation.TrackGetPath(i).ToString();
                     int colon = path.LastIndexOf(':');
                     var bone = colon >= 0 ? path[(colon + 1)..] : "";
-                    if (animation.TrackGetType(i) != Animation.TrackType.Rotation3D || skeleton.FindBone(bone) < 0) animation.RemoveTrack(i);
-                    else animation.TrackSetPath(i, new NodePath(model.GetPathTo(skeleton) + ":" + bone));
+                    int targetBone = skeleton.FindBone(bone), sourceBone = sourceSkeleton?.FindBone(bone) ?? -1;
+                    if (animation.TrackGetType(i) != Animation.TrackType.Rotation3D || targetBone < 0) { animation.RemoveTrack(i); continue; }
+                    animation.TrackSetPath(i, new NodePath(model.GetPathTo(skeleton) + ":" + bone));
+                    if (sourceBone < 0) continue;
+                    // Clips exported with a different rest pose (the Mixamo FBX set) are re-expressed in the model's bone frames:
+                    // local' = parentOffset^-1 * local * boneOffset, where offset = sourceRest^-1 * targetRest in world space.
+                    Quaternion boneOffset = WorldRest(sourceSkeleton, sourceSpace, sourceBone).Inverse() * WorldRest(skeleton, targetSpace, targetBone);
+                    int sourceParent = sourceSkeleton.GetBoneParent(sourceBone), targetParent = skeleton.GetBoneParent(targetBone);
+                    Quaternion parentOffset = WorldRest(sourceSkeleton, sourceSpace, sourceParent).Inverse() * WorldRest(skeleton, targetSpace, targetParent);
+                    if (boneOffset.IsEqualApprox(Quaternion.Identity) && parentOffset.IsEqualApprox(Quaternion.Identity)) continue;
+                    Quaternion parentInverse = parentOffset.Inverse();
+                    for (int k = 0; k < animation.TrackGetKeyCount(i); k++)
+                        animation.TrackSetKeyValue(i, k, (parentInverse * (Quaternion)animation.TrackGetKeyValue(i, k) * boneOffset).Normalized());
                 }
                 library.AddAnimation(clip, animation);
                 source.Free();
             }
         }
 
+        // Transform of a node relative to a scene root that is not in the tree yet.
+        private static Transform3D SceneTransform(Node root, Node3D node)
+        {
+            var result = Transform3D.Identity;
+            for (Node n = node; n != null && n != root; n = n.GetParent())
+                if (n is Node3D spatial) result = spatial.Transform * result;
+            return result;
+        }
+
+        // World rotation of a bone's rest pose; bone -1 is the skeleton node itself.
+        private static Quaternion WorldRest(Skeleton3D skeleton, Transform3D space, int bone)
+        {
+            var rest = bone < 0 ? space : space * skeleton.GetBoneGlobalRest(bone);
+            return rest.Basis.Orthonormalized().GetRotationQuaternion();
+        }
+
         // Sakuga source animations are named after Kaede's sprite clips; pick the closest model clip and how to drive it.
         private (string clip, Mode mode) MapAnimation(string source)
         {
+            if (girl) return MapGirlAnimation(source);
             bool Is(string prefix) => source.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
 
             if (Is("Block")) return (GuardClip, Mode.Guard);
@@ -131,6 +172,37 @@ namespace SakugaEngine
             return (IdleClip, Mode.Loop);
         }
 
+        // The girl has real reaction clips, so hits, knockdowns and get-ups play them instead of leaning a stance.
+        private (string clip, Mode mode) MapGirlAnimation(string source)
+        {
+            bool Is(string prefix) => source.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+            if (Is("Block")) return ("block", Mode.Guard);
+            if (Is("Hit_GetUp")) return ("get_up", Mode.Rise);
+            if (Is("Hit_Falling") || Is("Hit_OnTheGround") || Is("Hit_Down") || Is("Hit_Spin") || Is("Hit_Sweep") || Is("Hit_Faint"))
+                return ("knockdown", Mode.Fall);
+            if (Is("Hit_Strong") || Is("Hit_Air_Strong") || Is("Hit_Dizzy")) return ("hit_big", Mode.React);
+            if (Is("Hit") || Is("Throw_Reaction")) return ("hit_light", Mode.React);
+            if (Is("Taunt")) return ("victory", Mode.Loop);
+            if (Is("Walk_Forward")) return ("walk_forward", Mode.Loop);
+            if (Is("Walk_Backwards") || Is("Dash_Backwards")) return ("walk_backward", Mode.Loop);
+            if (Is("Dash_Forward") || Is("RunStop")) return ("run", Mode.Loop);
+            if (Is("Crouch")) return ("ginga_forward", Mode.Loop);
+
+            switch (source)
+            {
+                case "5A": case "j_5A": case "Throw_Enter": return ("jab", Mode.Attack);
+                case "5B": case "j_5B": case "236C_1": return ("jab_cross", Mode.Attack);
+                case "5C": case "j_5C": case "236C_2": return ("roundhouse", Mode.Attack);
+                case "2A": case "2B": return ("low_kick", Mode.Attack);
+                case "2C": return ("chapa_2", Mode.Attack);
+                case "66B": case "Throw_Sequence": return ("bencao", Mode.Attack);
+                case "623B": case "623B_2": case "236C_3": return ("uppercut", Mode.Attack);
+                case "236236A": return ("hurricane_kick", Mode.Attack);
+            }
+            return ("idle", Mode.Loop);
+        }
+
         private Vector3 JointPosition(int index)
         {
             return ToLocal(skeleton.ToGlobal(skeleton.GetBoneGlobalPose(index).Origin));
@@ -155,7 +227,7 @@ namespace SakugaEngine
             if (skeleton == null || hips < 0) return;
             SetTilt(0);
             var clips = new HashSet<string>();
-            foreach (string name in new[] { "5A", "5B", "5C", "66B", "236C_1", "236C_3", "623B", "236236A" })
+            foreach (string name in AttackSources)
                 clips.Add(MapAnimation(name).clip);
             foreach (string clip in clips)
             {
@@ -177,7 +249,7 @@ namespace SakugaEngine
             }
             if (girl && animationPlayer.HasAnimation(GuardClip))
             {
-                // Guard on the ginga beat where a hand comes up highest in front of the body.
+                // Hold the block where a hand comes up highest in front of the body.
                 float length = (float)animationPlayer.GetAnimation(GuardClip).Length, highest = float.MinValue;
                 for (int i = 0; i <= 60; i++)
                 {
@@ -192,7 +264,24 @@ namespace SakugaEngine
                     }
                 }
             }
-            if (head >= 0 && leftFoot >= 0 && rightFoot >= 0)
+            if (girl && animationPlayer.HasAnimation("knockdown") && animationPlayer.HasAnimation("get_up"))
+            {
+                // Hold the knockdown once the hips reach the floor, and play only the get-up's actual rise.
+                float fallLength = (float)animationPlayer.GetAnimation("knockdown").Length, lowest = float.MaxValue;
+                var fall = new float[61];
+                for (int i = 0; i <= 60; i++) { Pose("knockdown", fallLength * i / 60f); fall[i] = JointPosition(hips).Y; lowest = Mathf.Min(lowest, fall[i]); }
+                for (int i = 0; i <= 60; i++) if (fall[i] <= lowest + 0.05f * Mathf.Abs(fall[0] - lowest)) { lyingTime = fallLength * i / 60f; break; }
+                float riseLength = (float)animationPlayer.GetAnimation("get_up").Length;
+                var rise = new float[121];
+                float riseLow = float.MaxValue, riseHigh = float.MinValue;
+                for (int i = 0; i <= 120; i++) { Pose("get_up", riseLength * i / 120f); rise[i] = JointPosition(hips).Y; riseLow = Mathf.Min(riseLow, rise[i]); riseHigh = Mathf.Max(riseHigh, rise[i]); }
+                int endIndex = 120, startIndex = 0;
+                for (int i = 0; i <= 120; i++) if (rise[i] >= riseLow + 0.95f * (riseHigh - riseLow)) { endIndex = i; break; }
+                for (int i = endIndex; i >= 0; i--) if (rise[i] <= riseLow + 0.1f * (riseHigh - riseLow)) { startIndex = i; break; }
+                riseStart = riseLength * startIndex / 120f;
+                riseEnd = riseLength * endIndex / 120f;
+            }
+            if (!girl && head >= 0 && leftFoot >= 0 && rightFoot >= 0)
             {
                 // Knockdowns lay the straightest planted standing frame flat on its back.
                 float best = float.MinValue;
@@ -275,6 +364,16 @@ namespace SakugaEngine
                 case Mode.GetUp:
                     time = downTime;
                     tilt = downTilt * (1 - Mathf.SmoothStep(0, 1, f / (float)duration));
+                    break;
+                case Mode.React:
+                    time = f / (float)GlobalVariables.TicksPerSecond;
+                    break;
+                case Mode.Fall:
+                    bool lying = source.StartsWith("Hit_OnTheGround") || source.StartsWith("Hit_Down");
+                    time = lying ? lyingTime : Mathf.Lerp(0, lyingTime, Math.Min(1, f / (float)duration));
+                    break;
+                case Mode.Rise:
+                    time = Mathf.Lerp(riseStart, riseEnd, Math.Min(1, f / (float)duration));
                     break;
             }
 
