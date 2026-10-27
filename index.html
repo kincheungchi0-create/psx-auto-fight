@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PSX Auto Fight</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden; font-family: ui-sans-serif, system-ui, sans-serif; }
+    #hud {
+      position: fixed; left: 12px; top: 12px; z-index: 2; color: #e8ecf1;
+      background: rgba(0,0,0,.45); padding: 10px 12px; border-radius: 10px;
+      font-size: 13px; line-height: 1.45; max-width: min(520px, 92vw);
+    }
+    #hud b { color: #9fe870; }
+    #credit {
+      position: fixed; right: 12px; bottom: 10px; z-index: 2; color: #9aa3ad;
+      font-size: 11px; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 8px;
+    }
+    #credit a { color: #c9d4e0; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div><b>Auto mode</b> — watch only</div>
+    <div id="status">Loading…</div>
+  </div>
+  <div id="credit">
+    Models: <a href="https://heyheythere.itch.io/psx-people-free" target="_blank" rel="noopener">PSX People Free</a> by heyheythere · CC BY 4.0
+  </div>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const statusEl = document.getElementById('status');
+const setStatus = (t) => { statusEl.textContent = t; };
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a222c);
+scene.fog = new THREE.Fog(0x1a222c, 12, 28);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 80);
+camera.position.set(0, 4.2, 9);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.1, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.49;
+
+scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x334155, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(5, 10, 4);
+sun.castShadow = true;
+scene.add(sun);
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(8, 48),
+  new THREE.MeshStandardMaterial({ color: 0x2b3642, roughness: 0.95 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(7.6, 8, 64),
+  new THREE.MeshBasicMaterial({ color: 0x5b6b7c, side: THREE.DoubleSide })
+);
+ring.rotation.x = -Math.PI / 2;
+ring.position.y = 0.01;
+scene.add(ring);
+
+const ROSTER = [
+  { url: 'models/office_worker.glb', tag: 'office_worker', name: 'Office A', tint: 0x8ecae6 },
+  { url: 'models/survivor_woman.glb', tag: 'survivor_woman', name: 'Survivor A', tint: 0xffb703 },
+  { url: 'models/office_worker.glb', tag: 'office_worker', name: 'Office B', tint: 0x219ebc },
+  { url: 'models/survivor_woman.glb', tag: 'survivor_woman', name: 'Survivor B', tint: 0xfb8500 },
+];
+
+function clipMap(gltfActions, tag) {
+  const map = {};
+  for (const [name, action] of Object.entries(gltfActions)) {
+    const key = name.replace(new RegExp('_' + tag + '$'), '').toLowerCase();
+    map[key] = action;
+  }
+  return map;
+}
+
+class Fighter {
+  constructor(root, mixer, clips, name, tint) {
+    this.root = root;
+    this.mixer = mixer;
+    this.clips = clips;
+    this.name = name;
+    this.hp = 100;
+    this.state = 'idle';
+    this.target = null;
+    this.cooldown = 0.5 + Math.random();
+    this.alive = true;
+    this.busyUntil = 0;
+    this.marker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 10, 10),
+      new THREE.MeshBasicMaterial({ color: tint })
+    );
+    this.marker.position.y = 2.05;
+    root.add(this.marker);
+    this.play('idle', true);
+  }
+
+  play(name, loop = false) {
+    const next = this.clips[name];
+    if (!next) return;
+    if (this.current === next && this.state === name) return;
+    next.reset();
+    next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+    next.clampWhenFinished = !loop;
+    next.enabled = true;
+    if (this.current && this.current !== next) {
+      this.current.fadeOut(0.15);
+      next.reset().fadeIn(0.15).play();
+    } else {
+      next.play();
+    }
+    this.current = next;
+  }
+
+  face(point) {
+    const dx = point.x - this.root.position.x;
+    const dz = point.z - this.root.position.z;
+    if (dx * dx + dz * dz > 1e-6) this.root.rotation.y = Math.atan2(dx, dz);
+  }
+
+  update(dt, now) {
+    this.mixer.update(dt);
+    if (!this.alive) return;
+    this.cooldown -= dt;
+    if (now < this.busyUntil) return;
+    if (!this.target || !this.target.alive) {
+      if (this.state !== 'idle') { this.state = 'idle'; this.play('idle', true); }
+      return;
+    }
+
+    const me = this.root.position;
+    const them = this.target.root.position;
+    const dist = me.distanceTo(them);
+    this.face(them);
+
+    if (dist > 1.4) {
+      const run = dist > 3.2;
+      if (this.state !== (run ? 'run' : 'walk')) {
+        this.state = run ? 'run' : 'walk';
+        this.play(this.state, true);
+      }
+      const speed = run ? 2.7 : 1.45;
+      const dir = new THREE.Vector3(them.x - me.x, 0, them.z - me.z).normalize();
+      me.addScaledVector(dir, speed * dt);
+      const r = Math.hypot(me.x, me.z);
+      if (r > 7.2) me.multiplyScalar(7.2 / r);
+    } else if (this.cooldown <= 0) {
+      this.state = 'attack';
+      this.play('attack', false);
+      const ad = this.clips.attack?.getClip().duration || 0.55;
+      this.busyUntil = now + ad * 0.9;
+      this.cooldown = 0.85 + Math.random() * 0.6;
+      const hitAt = now + Math.min(0.32, ad * 0.4);
+      const self = this;
+      const check = () => {
+        if (!self.alive || !self.target?.alive) return;
+        if (performance.now() / 1000 < hitAt) { requestAnimationFrame(check); return; }
+        if (self.root.position.distanceTo(self.target.root.position) < 1.75) {
+          self.target.takeHit(16 + Math.random() * 12, performance.now() / 1000);
+        }
+        if (self.alive && self.state === 'attack') {
+          self.state = 'idle';
+          self.play('idle', true);
+        }
+      };
+      requestAnimationFrame(check);
+    } else if (this.state !== 'idle') {
+      this.state = 'idle';
+      this.play('idle', true);
+    }
+  }
+
+  takeHit(dmg, now) {
+    if (!this.alive) return;
+    this.hp = Math.max(0, this.hp - dmg);
+    if (this.hp <= 0) {
+      this.alive = false;
+      this.state = 'death';
+      this.play('death', false);
+      this.marker.visible = false;
+      return;
+    }
+    this.state = 'hit';
+    this.play('hit', false);
+    const hd = this.clips.hit?.getClip().duration || 0.35;
+    this.busyUntil = now + hd * 0.9;
+    const self = this;
+    setTimeout(() => {
+      if (!self.alive) return;
+      if (self.state === 'hit') {
+        self.state = 'idle';
+        self.play('idle', true);
+      }
+    }, hd * 900);
+  }
+}
+
+const loader = new GLTFLoader();
+const fighters = [];
+let resetting = false;
+
+async function spawn(spec, index, total) {
+  const gltf = await loader.loadAsync(spec.url);
+  const root = gltf.scene;
+  root.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+      if (o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) { m.metalness = 0; m.roughness = 0.9; }
+      }
+    }
+  });
+  const mixer = new THREE.AnimationMixer(root);
+  const actions = {};
+  for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+  const clips = clipMap(actions, spec.tag);
+  const ang = (index / total) * Math.PI * 2;
+  root.position.set(Math.cos(ang) * 3.2, 0, Math.sin(ang) * 3.2);
+  // face center
+  root.rotation.y = ang + Math.PI;
+  scene.add(root);
+  return new Fighter(root, mixer, clips, spec.name, spec.tint);
+}
+
+function pickTargets() {
+  const alive = fighters.filter((f) => f.alive);
+  for (const f of fighters) {
+    if (!f.alive) { f.target = null; continue; }
+    const others = alive.filter((o) => o !== f);
+    if (!others.length) { f.target = null; continue; }
+    others.sort((a, b) => a.root.position.distanceToSquared(f.root.position) - b.root.position.distanceToSquared(f.root.position));
+    f.target = others[0];
+  }
+}
+
+function maybeReset(now) {
+  if (resetting) return;
+  if (fighters.filter((f) => f.alive).length >= 2) return;
+  resetting = true;
+  setTimeout(() => {
+    for (let i = 0; i < fighters.length; i++) {
+      const f = fighters[i];
+      f.hp = 100;
+      f.alive = true;
+      f.state = 'idle';
+      f.busyUntil = 0;
+      f.cooldown = 0.3 + Math.random();
+      f.marker.visible = true;
+      const ang = (i / fighters.length) * Math.PI * 2 + Math.random() * 0.4;
+      const r = 2.8 + Math.random() * 1.5;
+      f.root.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+      f.play('idle', true);
+    }
+    pickTargets();
+    resetting = false;
+  }, 1600);
+}
+
+async function main() {
+  setStatus('Loading characters…');
+  for (let i = 0; i < ROSTER.length; i++) {
+    fighters.push(await spawn(ROSTER[i], i, ROSTER.length));
+  }
+  pickTargets();
+
+  const clock = new THREE.Clock();
+  function tick() {
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const now = performance.now() / 1000;
+    for (const f of fighters) f.update(dt, now);
+    pickTargets();
+    maybeReset(now);
+    setStatus(fighters.map((f) => `${f.name} ${f.alive ? Math.ceil(f.hp) : 'KO'}`).join(' · '));
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+main().catch((e) => {
+  console.error(e);
+  setStatus('Load failed: ' + e.message);
+});
+  </script>
+</body>
+</html>
