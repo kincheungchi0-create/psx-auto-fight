@@ -100,6 +100,22 @@ function clipMap(gltfActions, tag) {
   return map;
 }
 
+
+const ATTACK_ENTER = 0.72;   // start punch only this close (metres between roots)
+const ATTACK_STOP = 0.48;    // don't walk through each other
+const HAND_HIT_R = 0.38;     // hand/foot must be within this of torso bones
+const BODY_BONES = ['Hips', 'Spine', 'Head'];
+const STRIKE_BONES = ['LeftHand', 'RightHand', 'LeftFoot', 'RightFoot'];
+
+function findBone(root, name) {
+  let found = null;
+  root.traverse((o) => {
+    if (found) return;
+    if (o.isBone && o.name === name) found = o;
+  });
+  return found;
+}
+
 class Fighter {
   constructor(root, mixer, clips, name, tint) {
     this.root = root;
@@ -112,6 +128,16 @@ class Fighter {
     this.cooldown = 0.5 + Math.random();
     this.alive = true;
     this.busyUntil = 0;
+    this.pendingHit = null;
+    this.bones = {
+      hips: findBone(root, 'Hips'),
+      spine: findBone(root, 'Spine'),
+      head: findBone(root, 'Head'),
+      lHand: findBone(root, 'LeftHand'),
+      rHand: findBone(root, 'RightHand'),
+      lFoot: findBone(root, 'LeftFoot'),
+      rFoot: findBone(root, 'RightFoot'),
+    };
     this.marker = new THREE.Mesh(
       new THREE.SphereGeometry(0.08, 10, 10),
       new THREE.MeshBasicMaterial({ color: tint })
@@ -130,8 +156,8 @@ class Fighter {
     next.clampWhenFinished = !loop;
     next.enabled = true;
     if (this.current && this.current !== next) {
-      this.current.fadeOut(0.15);
-      next.reset().fadeIn(0.15).play();
+      this.current.fadeOut(0.12);
+      next.reset().fadeIn(0.12).play();
     } else {
       next.play();
     }
@@ -144,11 +170,86 @@ class Fighter {
     if (dx * dx + dz * dz > 1e-6) this.root.rotation.y = Math.atan2(dx, dz);
   }
 
+  bodyPoints() {
+    const pts = [];
+    for (const key of ['hips', 'spine', 'head']) {
+      const b = this.bones[key];
+      if (!b) continue;
+      const p = new THREE.Vector3();
+      b.getWorldPosition(p);
+      pts.push(p);
+    }
+    if (!pts.length) {
+      const p = this.root.position.clone();
+      p.y += 1.0;
+      pts.push(p);
+    }
+    return pts;
+  }
+
+  strikePoints() {
+    const pts = [];
+    for (const key of ['lHand', 'rHand', 'lFoot', 'rFoot']) {
+      const b = this.bones[key];
+      if (!b) continue;
+      const p = new THREE.Vector3();
+      b.getWorldPosition(p);
+      pts.push({ p, key });
+    }
+    return pts;
+  }
+
+  /** True only if a striking limb is overlapping opponent torso. */
+  limbsTouch(target) {
+    const strikes = this.strikePoints();
+    const bodies = target.bodyPoints();
+    let best = Infinity;
+    let which = null;
+    for (const s of strikes) {
+      for (const b of bodies) {
+        const d = s.p.distanceTo(b);
+        if (d < best) { best = d; which = s.key; }
+      }
+    }
+    return best <= HAND_HIT_R ? { ok: true, dist: best, limb: which } : { ok: false, dist: best, limb: which };
+  }
+
   update(dt, now) {
     this.mixer.update(dt);
     if (!this.alive) return;
     this.cooldown -= dt;
-    if (now < this.busyUntil) return;
+
+    // Resolve delayed hit using LIVE bone positions (must actually touch)
+    if (this.pendingHit && now >= this.pendingHit.at) {
+      const tgt = this.pendingHit.target;
+      this.pendingHit = null;
+      if (this.alive && tgt?.alive) {
+        const touch = this.limbsTouch(tgt);
+        if (touch.ok) {
+          tgt.takeHit(16 + Math.random() * 12, now, this);
+        }
+      }
+      if (this.alive && this.state === 'attack') {
+        this.state = 'idle';
+        this.play('idle', true);
+      }
+    }
+
+    if (now < this.busyUntil) {
+      // during windup, keep facing / slight step-in so fist reaches
+      if (this.state === 'attack' && this.target?.alive) {
+        this.face(this.target.root.position);
+        const me = this.root.position;
+        const them = this.target.root.position;
+        const dist = me.distanceTo(them);
+        if (dist > ATTACK_STOP + 0.05) {
+          const dir = new THREE.Vector3(them.x - me.x, 0, them.z - me.z).normalize();
+          me.addScaledVector(dir, 0.55 * dt);
+        }
+      }
+      return;
+    }
+
     if (!this.target || !this.target.alive) {
       if (this.state !== 'idle') { this.state = 'idle'; this.play('idle', true); }
       return;
@@ -159,13 +260,21 @@ class Fighter {
     const dist = me.distanceTo(them);
     this.face(them);
 
-    if (dist > 1.4) {
-      const run = dist > 3.2;
+    // separate if overlapping
+    if (dist < ATTACK_STOP) {
+      const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
+      if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
+      dir.normalize();
+      me.addScaledVector(dir, (ATTACK_STOP - dist) * 0.5);
+    }
+
+    if (dist > ATTACK_ENTER) {
+      const run = dist > 2.8;
       if (this.state !== (run ? 'run' : 'walk')) {
         this.state = run ? 'run' : 'walk';
         this.play(this.state, true);
       }
-      const speed = run ? 2.7 : 1.45;
+      const speed = run ? 2.8 : 1.5;
       const dir = new THREE.Vector3(them.x - me.x, 0, them.z - me.z).normalize();
       me.addScaledVector(dir, speed * dt);
       const r = Math.hypot(me.x, me.z);
@@ -174,39 +283,39 @@ class Fighter {
       this.state = 'attack';
       this.play('attack', false);
       const ad = this.clips.attack?.getClip().duration || 0.55;
-      this.busyUntil = now + ad * 0.9;
-      this.cooldown = 0.85 + Math.random() * 0.6;
-      const hitAt = now + Math.min(0.32, ad * 0.4);
-      const self = this;
-      const check = () => {
-        if (!self.alive || !self.target?.alive) return;
-        if (performance.now() / 1000 < hitAt) { requestAnimationFrame(check); return; }
-        if (self.root.position.distanceTo(self.target.root.position) < 1.75) {
-          self.target.takeHit(16 + Math.random() * 12, performance.now() / 1000);
-        }
-        if (self.alive && self.state === 'attack') {
-          self.state = 'idle';
-          self.play('idle', true);
-        }
-      };
-      requestAnimationFrame(check);
-    } else if (this.state !== 'idle') {
+      // hit check near mid of punch when hands extend
+      const hitAt = now + Math.max(0.22, ad * 0.45);
+      this.busyUntil = now + ad * 0.95;
+      this.cooldown = 0.7 + Math.random() * 0.45;
+      this.pendingHit = { at: hitAt, target: this.target };
+    } else if (this.state !== 'idle' && this.state !== 'attack') {
       this.state = 'idle';
       this.play('idle', true);
     }
   }
 
-  takeHit(dmg, now) {
+  takeHit(dmg, now, attacker) {
     if (!this.alive) return;
     this.hp = Math.max(0, this.hp - dmg);
+    if (attacker) {
+      const me = this.root.position;
+      const them = attacker.root.position;
+      const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
+      if (dir.lengthSq() > 1e-6) {
+        dir.normalize();
+        me.addScaledVector(dir, 0.22);
+      }
+    }
     if (this.hp <= 0) {
       this.alive = false;
       this.state = 'death';
+      this.pendingHit = null;
       this.play('death', false);
       this.marker.visible = false;
       return;
     }
     this.state = 'hit';
+    this.pendingHit = null;
     this.play('hit', false);
     const hd = this.clips.hit?.getClip().duration || 0.35;
     this.busyUntil = now + hd * 0.9;
@@ -220,6 +329,7 @@ class Fighter {
     }, hd * 900);
   }
 }
+
 
 const loader = new GLTFLoader();
 const fighters = [];
