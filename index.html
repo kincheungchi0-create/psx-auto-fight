@@ -55,6 +55,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { FightingEngine } from './fighting-engine.mjs';
+import { findContact } from './contact.mjs';
 
 const statusEl = document.getElementById('status');
 const setStatus = (t) => { statusEl.textContent = t; };
@@ -136,16 +137,16 @@ const KUNGFU_MOVES = {
 };
 
 // Keep the fighters' bodies apart while still allowing their limbs to reach.
-const ATTACK_ENTER = 1.8;
-const ATTACK_STOP = 1.45;
-const HAND_HIT_R = 0.55;
-const FOOT_HIT_R = 0.7;
+const ATTACK_ENTER = 1.15;
+const ATTACK_STOP = 0.95;
+const HAND_HIT_R = 0.34;
+const FOOT_HIT_R = 0.38;
 
 // Spin Flip Kick native clip ~3.7s @30fps; play at 1.3× ≈ 2.85s
 const MOVES = {
-  jab:   { label: '直拳', limb: 'hand', dmg: [12, 18], dur: 0.55, hitAt: 0.28, enter: 1.8, step: 0.5 },
-  heavy: { label: '重拳', limb: 'hand', dmg: [22, 30], dur: 0.85, hitAt: 0.42, enter: 1.8, step: 0.35 },
-  kick:  { label: '踢擊', limb: 'foot', dmg: [20, 32], dur: 2.85, hitAt: 0.85, hitEnd: 2.15, enter: 1.9, step: 0.45, timeScale: 1.3 },
+  jab:   { label: '直拳', limb: 'hand', dmg: [12, 18], dur: 0.55, hitAt: 0.28, enter: 1.15, step: 0.5 },
+  heavy: { label: '重拳', limb: 'hand', dmg: [22, 30], dur: 0.85, hitAt: 0.42, enter: 1.15, step: 0.35 },
+  kick:  { label: '踢擊', limb: 'foot', dmg: [20, 32], dur: 2.85, hitAt: 0.85, hitEnd: 2.15, enter: 1.25, step: 0.45, timeScale: 1.3 },
 };
 
 function findBone(root, name) {
@@ -437,19 +438,10 @@ class Fighter {
     return pts;
   }
 
-  limbsTouch(target, limb) {
+  limbsTouch(target, limb, history) {
     const strikes = this.strikePoints(limb || 'hand');
     const bodies = target.bodyPoints();
-    const r = (limb === 'foot') ? FOOT_HIT_R : HAND_HIT_R;
-    let best = Infinity;
-    let which = null;
-    for (const s of strikes) {
-      for (const b of bodies) {
-        const d = s.p.distanceTo(b);
-        if (d < best) { best = d; which = s.key; }
-      }
-    }
-    return best <= r ? { ok: true, dist: best, limb: which } : { ok: false, dist: best, limb: which };
+    return findContact(strikes, bodies, limb === 'foot' ? FOOT_HIT_R : HAND_HIT_R, history);
   }
 
   /** Procedural kick fallback if X Bot missing. */
@@ -503,7 +495,7 @@ class Fighter {
       const duration = Math.max(0.5, (this.current?.getClip().duration || 1) / 1.2);
       this.busyUntil = now + duration * 0.95;
       this.cooldown = 0.6 + Math.random() * 0.5;
-      this.pendingHit = { at: now + duration * 0.2, until: now + duration * 0.85, target: this.target, limb, label: limb === 'foot' ? '踢擊' : m.label, move: id, window: true };
+      this.pendingHit = { at: now + duration * 0.2, until: now + duration * 0.85, target: this.target, limb, label: limb === 'foot' ? '踢擊' : m.label, move: id, window: true, history: new Map() };
       matchEngine.startAttack(this, this.target, {
         activeFrom: this.pendingHit.at, activeUntil: this.pendingHit.until,
         damage: m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]),
@@ -562,10 +554,8 @@ class Fighter {
   }
 
   update(dt, now) {
-    this.mixer.update(dt);
     this.updateReaction(now);
     this.centerOnArenaPosition();
-    if (this.xbotMixer && this.usingXbot) this.xbotMixer.update(dt);
 
     if (!this.custom && this.move === 'kick' && !this.usingXbot) this.applyKickPose(now);
     else if (this.kickDur > 0 && this.move !== 'kick') { this.resetKickBones(); this.kickDur = 0; }
@@ -574,28 +564,29 @@ class Fighter {
     this.cooldown -= dt;
     this.dodgeCooldown -= dt;
 
-    if (this.pendingHit && now >= this.pendingHit.at) {
+    if (this.pendingHit) {
       const ph = this.pendingHit;
       const tgt = ph.target;
-      const m = MOVES[ph.move] || MOVES.jab;
-      if (ph.window) {
-        if (this.hitLanded || !this.alive || !tgt?.alive || now > (ph.until || ph.at)) {
-          this.pendingHit = null;
-        } else {
-          const touch = this.limbsTouch(tgt, ph.limb);
-          const result = matchEngine.tryHit(this, tgt, now, touch.ok);
-          if (result) {
-            this.hitLanded = true;
+      const touch = tgt?.alive ? this.limbsTouch(tgt, ph.limb, ph.history || (ph.history = new Map())) : null;
+      if (now >= ph.at) {
+        const m = MOVES[ph.move] || MOVES.jab;
+        if (ph.window) {
+          if (this.hitLanded || !this.alive || !tgt?.alive || now > (ph.until || ph.at)) {
             this.pendingHit = null;
-            if (result.blocked) tgt.setMoveLabel('格擋');
-            else if (!result.dodged) tgt.takeHit(result.damage, now, this, ph.label || m.label);
+          } else {
+            const result = matchEngine.tryHit(this, tgt, now, !!touch);
+            if (result) {
+              this.hitLanded = true;
+              this.pendingHit = null;
+              if (!result.dodged) showImpact(touch.point, now);
+              if (result.blocked) tgt.setMoveLabel('格擋');
+              else if (!result.dodged) tgt.takeHit(result.damage, now, this, ph.label || m.label);
+            }
           }
-        }
-      } else {
-        this.pendingHit = null;
-        if (this.alive && tgt?.alive) {
-          const touch = this.limbsTouch(tgt, ph.limb);
-          if (touch.ok) {
+        } else {
+          this.pendingHit = null;
+          if (this.alive && tgt?.alive && touch) {
+            showImpact(touch.point, now);
             const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
             tgt.takeHit(dmg, now, this, ph.label || m.label);
           }
@@ -708,15 +699,6 @@ class Fighter {
     this.pendingHit = null;
     this.move = null;
     this.setMoveLabel(moveLabel ? ('中：' + moveLabel) : '');
-    if (attacker) {
-      const me = this.root.position;
-      const them = attacker.root.position;
-      const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
-      if (dir.lengthSq() > 1e-6) {
-        dir.normalize();
-        me.addScaledVector(dir, moveLabel === '重拳' || moveLabel === '踢擊' ? 0.36 : 0.18);
-      }
-    }
     this.reactionStart = now;
     if (this.hp <= 0) {
       this.alive = false;
@@ -735,6 +717,18 @@ class Fighter {
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 const fighters = [];
+const impacts = [];
+function showImpact(point, now) {
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe17a, transparent: true }));
+  flash.position.copy(point); scene.add(flash); impacts.push({ flash, until: now + 0.14 });
+}
+function updateImpacts(now) {
+  for (let i = impacts.length - 1; i >= 0; i--) {
+    const impact = impacts[i];
+    if (now >= impact.until) { scene.remove(impact.flash); impact.flash.geometry.dispose(); impact.flash.material.dispose(); impacts.splice(i, 1); }
+    else impact.flash.material.opacity = (impact.until - now) / 0.14;
+  }
+}
 let matchEngine;
 /** Deduped GLTF loads (office/survivor shared by 2 fighters each). */
 const gltfCache = new Map();
@@ -913,6 +907,7 @@ async function main() {
     const now = performance.now() / 1000;
     matchEngine.step(now);
     if (matchEngine.phase === 'fight') {
+      for (const f of fighters) { f.mixer.update(dt); if (f.xbotMixer && f.usingXbot) f.xbotMixer.update(dt); f.updateReaction(now); f.centerOnArenaPosition(); }
       for (const f of fighters) f.update(dt, now);
       separateFighters();
       for (const f of fighters) { f.root.position.z = 0; f.root.position.x = THREE.MathUtils.clamp(f.root.position.x, -ARENA_EDGE, ARENA_EDGE); }
@@ -925,6 +920,7 @@ async function main() {
     document.getElementById('score').textContent = matchEngine.scores.join(' : ');
     const roundStatus = matchEngine.phase === 'ready' ? `第 ${matchEngine.round} 回合 — 準備！` : matchEngine.phase === 'fight' ? '' : matchEngine.result;
     setStatus(roundStatus);
+    updateImpacts(now);
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
