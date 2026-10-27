@@ -111,7 +111,7 @@ namespace SakugaEngine
             CancelBuffer = false;
             MoveBuffer.Stop();
 
-            GD.Print("You executed " + GetCurrentMove().MoveName + "!");
+            GD.Print($"Player {_owner.playerID + 1} executed {GetCurrentMove().MoveName}!");
         }
 
         private void CheckMoveCancel()

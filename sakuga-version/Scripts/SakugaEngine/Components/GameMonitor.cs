@@ -228,10 +228,12 @@ namespace SakugaEngine
                         DelayTimer.Stop();
                         // Open results menu
                         CallDeferred("ShowResultScreen");
+                        DelayTimer.Start(180);
                         MatchState = MatchState.RESULTS;
                     }
                     break;
                 case MatchState.RESULTS:
+                    if (!DelayTimer.IsRunning()) CallDeferred(nameof(RestartDemo));
                     break;
             }
         }
@@ -355,6 +357,11 @@ namespace SakugaEngine
             }
         }
 
+        private void RestartDemo()
+        {
+            GetTree().ReloadCurrentScene();
+        }
+
         private void ShowResultScreen()
         {
             if (ResultsScreen == null) return;
@@ -367,17 +374,17 @@ namespace SakugaEngine
 
             if (Winner == 0) 
             {
-                winP1.GetNode<Label>("NamePlayer1").Text = _fighters[Winner].Data.Profile.ShortName;
+                winP1.GetNode<Label>("NamePlayer1").Text = "Anime Girl";
                 winP2.Visible = false;
             }
             else if (Winner == 1)
             {
-                winP2.GetNode<Label>("NamePlayer2").Text = _fighters[Winner].Data.Profile.ShortName;
+                winP2.GetNode<Label>("NamePlayer2").Text = "Kung Fu Fighter";
                 winP1.Visible = false;
             }
-            WinnerRender.Texture = _fighters[Winner].Data.Profile.VictoryRender;
+            WinnerRender.Visible = false;
 
-            VictoryMessage.Text = winnerMessage;
+            VictoryMessage.Text = "Next match starting...";
 
             AudioManager.Instance.PlayBGM(VictoryJingle);
             ResultsScreen.Visible = true;

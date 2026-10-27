@@ -32,6 +32,7 @@ namespace SakugaEngine
             if (girl) LoadGirlAnimations();
             else animationPlayer = FindNodeOfType<AnimationPlayer>(model);
             if (animationPlayer == null) GD.PushError("Fighter animation player is missing");
+            else animationPlayer.SpeedScale = 0; // Sakuga's state frame exclusively drives the pose.
         }
 
         private static T FindNodeOfType<T>(Node node) where T : Node
@@ -80,7 +81,11 @@ namespace SakugaEngine
                 return girl ? "esquiva_1" : "Kung Fu the misleader";
             if (state.StartsWith("Walk", StringComparison.OrdinalIgnoreCase) || state.StartsWith("Run", StringComparison.OrdinalIgnoreCase) || state.StartsWith("Dash", StringComparison.OrdinalIgnoreCase))
                 return girl ? "ginga_forward" : "Kung Fu idle guard";
-            if (state.Contains("5A") || state.Contains("5B") || state.Contains("5C") || state.StartsWith("2") || state.StartsWith("6") || state.StartsWith("j_5"))
+            if (state.StartsWith("Throw", StringComparison.OrdinalIgnoreCase))
+                return girl ? "chapa_2" : "Kung Fu double push punch";
+            if (state.Contains("5C") || state.Contains("2C") || state.Contains("66B"))
+                return girl ? "chapa_2" : "Kung Fu sexy kick";
+            if (state.Contains("5A") || state.Contains("5B") || state.StartsWith("2") || state.StartsWith("6") || state.StartsWith("j_5"))
                 return girl ? "bencao" : "Kung Fu sexy punch";
             return girl ? "capoeira" : "Kung Fu idle guard";
         }
