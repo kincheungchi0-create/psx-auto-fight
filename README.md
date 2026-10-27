@@ -17,5 +17,5 @@ Run `npm test` to verify the combat and round rules. Open the printed URL. Model
 ## Credits
 
 - [Anime Girl Character Free GameReady Animated](https://sketchfab.com/3d-models/anime-girl-character-free-gameready-animated-b8e1967c0703492e8121d9457f056d27) by RahulTambat, CC BY 4.0. Modified for the game: normalized skeleton, removed backdrop and added animations.
-- [Gundam Evolution RX 78-2](https://sketchfab.com/3d-models/gundam-evolution-rx-78-2-c98e4d4382434ea280ab33a2bb6beb05) by NAJWAN_ID, CC BY 4.0. Modified for the game: re-rigged, animated, retextured and converted to glTF.
+- [Mr Sexy Man (Fighter with 13 Animations)](https://sketchfab.com/3d-models/mr-sexy-man-fighter-with-13-animations-127cc242790c422fb9599f774b1c9642) by Jungle Jim, CC BY 4.0. Original model and animations adapted for the game.
 - Fight animations: [Adobe Mixamo](https://www.mixamo.com/).
