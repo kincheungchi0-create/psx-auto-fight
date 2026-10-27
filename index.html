@@ -22,7 +22,7 @@
 </head>
 <body>
   <div id="hud">
-    <div><b>Auto mode</b> — 直拳／重拳／旋風腳（手腳骨碰撞）</div>
+    <div><b>Auto mode</b> — 拳擊／踢擊／閃避（手腳骨碰撞）</div>
     <div id="status">Loading…</div>
   </div>
   <div id="credit">
@@ -92,11 +92,11 @@ const ROSTER = [
 ];
 
 const MEWTWO_MOVES = {
-  idle: ['capoeira', 'capoeira_2', 'capoeira_3', 'ginga_variation_1', 'ginga_variation_2', 'ginga_variation_3'],
-  walk: ['ginga_forward', 'ginga_backward', 'ginga_sideways_1', 'ginga_sideways_2'],
+  idle: ['capoeira'],
+  walk: ['ginga_forward'],
   jab: ['boxing_jab_cross'],
-  heavy: ['boxing_jab_cross', 'bencao', 'chapa_2', 'pontera'],
-  kick: ['armada', 'armada_to_esquiva', 'au', 'au_to_role', 'chapa_giratoria', 'chapa_giratoria_2', 'chapaeu_de_couro', 'ginga_sideways_to_au', 'macaco_side', 'martelo_2', 'martelo_3', 'martelo_do_chau', 'martelo_do_chau_sem_mao', 'meia_lua_de_compasso', 'meia_lua_de_compasso_back', 'meia_lua_de_frente', 'mma_spinning_back_kick', 'queshada_1', 'queshada_2', 'rasteira_1', 'rasteira_2', 'troca_1'],
+  heavy: ['boxing_jab_cross'],
+  kick: ['armada', 'armada_to_esquiva', 'chapa_giratoria', 'chapa_giratoria_2', 'chapaeu_de_couro', 'martelo_2', 'martelo_3', 'martelo_do_chau', 'martelo_do_chau_sem_mao', 'meia_lua_de_compasso', 'meia_lua_de_compasso_back', 'meia_lua_de_frente', 'mma_spinning_back_kick', 'queshada_1', 'queshada_2', 'rasteira_1', 'rasteira_2'],
   hit: ['esquiva_1', 'esquiva_2', 'esquiva_3', 'esquiva_4', 'esquiva_5'],
 };
 
@@ -111,16 +111,17 @@ function clipMap(gltfActions, tag) {
 
 const GUNDAM_MOVES = { ...MEWTWO_MOVES, jab: ['bencao'], heavy: ['chapa_2', 'pontera', 'bencao'], kick: MEWTWO_MOVES.kick.filter((name) => name !== 'mma_spinning_back_kick') };
 
-const ATTACK_ENTER = 0.78;
-const ATTACK_STOP = 0.50;
-const HAND_HIT_R = 0.42;
-const FOOT_HIT_R = 0.58;
+// Keep the fighters' bodies apart while still allowing their limbs to reach.
+const ATTACK_ENTER = 1.8;
+const ATTACK_STOP = 1.45;
+const HAND_HIT_R = 0.55;
+const FOOT_HIT_R = 0.7;
 
 // Spin Flip Kick native clip ~3.7s @30fps; play at 1.3× ≈ 2.85s
 const MOVES = {
-  jab:   { label: '直拳', limb: 'hand', dmg: [12, 18], dur: 0.55, hitAt: 0.28, enter: 0.78, step: 0.5 },
-  heavy: { label: '重拳', limb: 'hand', dmg: [22, 30], dur: 0.85, hitAt: 0.42, enter: 0.82, step: 0.35 },
-  kick:  { label: '旋風腳', limb: 'foot', dmg: [20, 32], dur: 2.85, hitAt: 0.85, hitEnd: 2.15, enter: 0.95, step: 0.45, timeScale: 1.3 },
+  jab:   { label: '直拳', limb: 'hand', dmg: [12, 18], dur: 0.55, hitAt: 0.28, enter: 1.8, step: 0.5 },
+  heavy: { label: '重拳', limb: 'hand', dmg: [22, 30], dur: 0.85, hitAt: 0.42, enter: 1.8, step: 0.35 },
+  kick:  { label: '踢擊', limb: 'foot', dmg: [20, 32], dur: 2.85, hitAt: 0.85, hitEnd: 2.15, enter: 1.9, step: 0.45, timeScale: 1.3 },
 };
 
 function findBone(root, name) {
@@ -156,6 +157,7 @@ class Fighter {
     this.move = null;
     this.target = null;
     this.cooldown = 0.4 + Math.random();
+    this.dodgeCooldown = 0;
     this.alive = true;
     this.busyUntil = 0;
     this.pendingHit = null;
@@ -436,14 +438,15 @@ class Fighter {
     const m = MOVES[id];
     this.move = id;
     this.state = 'attack';
-    this.setMoveLabel(m.label);
+    const limb = this.custom === 'gundam' ? 'foot' : m.limb;
+    this.setMoveLabel(limb === 'foot' ? '踢擊' : m.label);
     this.hitLanded = false;
     if (this.custom) {
       this.play(id, false, 1.2);
       const duration = Math.max(0.5, (this.current?.getClip().duration || 1) / 1.2);
       this.busyUntil = now + duration * 0.95;
       this.cooldown = 0.6 + Math.random() * 0.5;
-      this.pendingHit = { at: now + duration * 0.2, until: now + duration * 0.85, target: this.target, limb: id === 'kick' ? 'foot' : 'hand', move: id, window: true };
+      this.pendingHit = { at: now + duration * 0.2, until: now + duration * 0.85, target: this.target, limb, label: limb === 'foot' ? '踢擊' : m.label, move: id, window: true };
       return;
     }
     if (id === 'kick') {
@@ -493,6 +496,7 @@ class Fighter {
 
     if (!this.alive) return;
     this.cooldown -= dt;
+    this.dodgeCooldown -= dt;
 
     if (this.pendingHit && now >= this.pendingHit.at) {
       const ph = this.pendingHit;
@@ -507,7 +511,7 @@ class Fighter {
             this.hitLanded = true;
             this.pendingHit = null;
             const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
-            tgt.takeHit(dmg, now, this, m.label);
+            tgt.takeHit(dmg, now, this, ph.label || m.label);
           }
         }
       } else {
@@ -516,14 +520,14 @@ class Fighter {
           const touch = this.limbsTouch(tgt, ph.limb);
           if (touch.ok) {
             const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
-            tgt.takeHit(dmg, now, this, m.label);
+            tgt.takeHit(dmg, now, this, ph.label || m.label);
           }
         }
       }
     }
 
     if (now < this.busyUntil) {
-      if (this.state === 'attack' && this.target?.alive) {
+      if (!this.custom && this.state === 'attack' && this.target?.alive) {
         this.face(this.target.root.position);
         const me = this.root.position;
         const them = this.target.root.position;
@@ -557,6 +561,21 @@ class Fighter {
     const dist = me.distanceTo(them);
     this.face(them);
 
+    // React to an opponent's attack with a short, purposeful dodge.
+    if (this.custom && this.target.state === 'attack' && dist < 2.3 && this.dodgeCooldown <= 0 && Math.random() < 0.1) {
+      this.state = 'dodge';
+      this.play('hit', false, 1.2);
+      this.busyUntil = now + 0.6;
+      this.dodgeCooldown = 2.5;
+      this.setMoveLabel('閃避');
+      return;
+    }
+    if (this.state === 'dodge') {
+      this.state = 'idle';
+      this.setMoveLabel('');
+      this.play('idle', true);
+    }
+
     if (dist < ATTACK_STOP) {
       const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
       if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
@@ -575,7 +594,7 @@ class Fighter {
       }
       const speed = run ? 2.8 : 1.5;
       const dir = new THREE.Vector3(them.x - me.x, 0, them.z - me.z).normalize();
-      me.addScaledVector(dir, speed * dt);
+      me.addScaledVector(dir, Math.min(speed * dt, Math.max(0, dist - need)));
       const r = Math.hypot(me.x, me.z);
       if (r > 7.2) me.multiplyScalar(7.2 / r);
     } else if (nextMove) {
@@ -601,7 +620,7 @@ class Fighter {
       const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
       if (dir.lengthSq() > 1e-6) {
         dir.normalize();
-        me.addScaledVector(dir, moveLabel === '重拳' || moveLabel === '旋風腳' || moveLabel === '掃踢' ? 0.36 : 0.18);
+        me.addScaledVector(dir, moveLabel === '重拳' || moveLabel === '踢擊' ? 0.36 : 0.18);
       }
     }
     if (this.hp <= 0) {
@@ -701,6 +720,15 @@ async function spawn(spec, index, total) {
       if (result.status === 'fulfilled' && result.value.animations[0]) {
         const clip = result.value.animations[0].clone();
         clip.tracks = clip.tracks.filter((track) => !/^Armature\.(position|quaternion|scale)$/.test(track.name));
+        // Root motion is controlled by the arena AI, not by the animation clip.
+        for (const track of clip.tracks) {
+          if (/(Hips|TransN)\.position$/.test(track.name)) {
+            for (let i = 3; i < track.values.length; i += 3) {
+              track.values[i] = track.values[0];
+              track.values[i + 2] = track.values[2];
+            }
+          }
+        }
         actions[names[i]] = mixer.clipAction(clip);
       } else if (result.status === 'rejected') console.warn('Animation unavailable:', names[i], result.reason);
     });
@@ -723,6 +751,24 @@ function pickTargets() {
     if (!others.length) { f.target = null; continue; }
     others.sort((a, b) => a.root.position.distanceToSquared(f.root.position) - b.root.position.distanceToSquared(f.root.position));
     f.target = others[0];
+  }
+}
+
+function separateFighters() {
+  for (let i = 0; i < fighters.length; i++) {
+    for (let j = i + 1; j < fighters.length; j++) {
+      const a = fighters[i], b = fighters[j];
+      if (!a.alive || !b.alive) continue;
+      const delta = new THREE.Vector3().subVectors(b.root.position, a.root.position);
+      delta.y = 0;
+      const distance = delta.length();
+      if (distance >= ATTACK_STOP) continue;
+      if (distance < 0.001) delta.set(1, 0, 0);
+      else delta.multiplyScalar(1 / distance);
+      const push = (ATTACK_STOP - distance) / 2;
+      a.root.position.addScaledVector(delta, -push);
+      b.root.position.addScaledVector(delta, push);
+    }
   }
 }
 
@@ -766,6 +812,7 @@ async function main() {
     const dt = Math.min(clock.getDelta(), 0.05);
     const now = performance.now() / 1000;
     for (const f of fighters) f.update(dt, now);
+    separateFighters();
     pickTargets();
     maybeReset(now);
     const hp = fighters.map((f) => `${f.name} ${f.alive ? Math.ceil(f.hp) : 'KO'}`).join(' · ');
