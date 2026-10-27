@@ -2,8 +2,9 @@
   "name": "psx-auto-fight",
   "private": true,
   "version": "1.0.0",
-  "description": "Simple Three.js auto-fight demo using PSX People Free",
+  "description": "Three.js automatic fighting game",
   "scripts": {
-    "start": "npx --yes serve ."
+    "start": "npx --yes serve .",
+    "test": "node --test"
   }
 }

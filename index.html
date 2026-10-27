@@ -26,7 +26,7 @@
     <div id="status">Loading…</div>
   </div>
   <div id="credit">
-    Models: <a href="https://sketchfab.com/3d-models/mewtwo-ssb4-8f4a435e109e48fba91b7ed3a6e84a0a" target="_blank" rel="noopener">Mewtwo by 雨宮レン (modified)</a> · <a href="https://sketchfab.com/3d-models/gundam-evolution-rx-78-2-c98e4d4382434ea280ab33a2bb6beb05" target="_blank" rel="noopener">Gundam by NAJWAN_ID (modified)</a> · Animations: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Adobe Mixamo</a> · CC BY 4.0
+    Models: <a href="https://sketchfab.com/3d-models/anime-girl-character-free-gameready-animated-b8e1967c0703492e8121d9457f056d27" target="_blank" rel="noopener">Anime Girl by RahulTambat (modified)</a> · <a href="https://sketchfab.com/3d-models/gundam-evolution-rx-78-2-c98e4d4382434ea280ab33a2bb6beb05" target="_blank" rel="noopener">Gundam by NAJWAN_ID (modified)</a> · Animations: <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Adobe Mixamo</a> · CC BY 4.0
   </div>
   <script type="importmap">
   {
@@ -42,6 +42,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { FightingEngine } from './fighting-engine.mjs';
 
 const statusEl = document.getElementById('status');
 const setStatus = (t) => { statusEl.textContent = t; };
@@ -87,16 +88,16 @@ ring.position.y = 0.01;
 scene.add(ring);
 
 const ROSTER = [
-  { url: 'models/mewtwo/character.glb', tag: 'mewtwo', name: 'Mewtwo', tint: 0xc77dff, custom: 'mewtwo' },
+  { url: 'models/sketchgirl/character.glb', tag: 'sketchgirl', name: 'Anime Girl', tint: 0xff78bf, custom: 'sketchgirl' },
   { url: 'models/gundam/character.glb', tag: 'gundam', name: 'Gundam', tint: 0x80edff, custom: 'gundam' },
 ];
 
-const MEWTWO_MOVES = {
+const BASE_MOVES = {
   idle: ['capoeira'],
   walk: ['ginga_forward'],
-  jab: ['boxing_jab_cross'],
-  heavy: ['boxing_jab_cross'],
-  kick: ['armada', 'armada_to_esquiva', 'chapa_giratoria', 'chapa_giratoria_2', 'chapaeu_de_couro', 'martelo_2', 'martelo_3', 'martelo_do_chau', 'martelo_do_chau_sem_mao', 'meia_lua_de_compasso', 'meia_lua_de_compasso_back', 'meia_lua_de_frente', 'mma_spinning_back_kick', 'queshada_1', 'queshada_2', 'rasteira_1', 'rasteira_2'],
+  jab: ['bencao'],
+  heavy: ['chapa_2', 'pontera', 'bencao'],
+  kick: ['armada', 'armada_to_esquiva', 'chapa_giratoria', 'chapa_giratoria_2', 'chapaeu_de_couro', 'martelo_2', 'martelo_3', 'martelo_do_chau', 'martelo_do_chau_sem_mao', 'meia_lua_de_compasso', 'meia_lua_de_compasso_back', 'meia_lua_de_frente', 'queshada_1', 'queshada_2', 'rasteira_1', 'rasteira_2'],
   hit: ['esquiva_1', 'esquiva_2', 'esquiva_3', 'esquiva_4', 'esquiva_5'],
 };
 
@@ -109,7 +110,7 @@ function clipMap(gltfActions, tag) {
   return map;
 }
 
-const GUNDAM_MOVES = { ...MEWTWO_MOVES, jab: ['bencao'], heavy: ['chapa_2', 'pontera', 'bencao'], kick: MEWTWO_MOVES.kick.filter((name) => name !== 'mma_spinning_back_kick') };
+const GUNDAM_MOVES = BASE_MOVES;
 
 // Keep the fighters' bodies apart while still allowing their limbs to reach.
 const ATTACK_ENTER = 1.8;
@@ -150,7 +151,7 @@ class Fighter {
     this.mixer = mixer;
     this.clips = clips;
     this.custom = custom;
-    this.moveSets = custom === 'gundam' ? GUNDAM_MOVES : MEWTWO_MOVES;
+    this.moveSets = GUNDAM_MOVES;
     this.name = name;
     this.hp = 100;
     this.state = 'idle';
@@ -336,6 +337,18 @@ class Fighter {
     if (dx * dx + dz * dz > 1e-6) this.root.rotation.y = Math.atan2(dx, dz);
   }
 
+  centerOnArenaPosition() {
+    const hip = this.bones.hips;
+    if (!this.custom || !hip) return;
+    // Animation clips can move the skeleton away from its arena position.
+    // Keep the hips above the AI's collision point without suppressing jumps.
+    const local = this.root.worldToLocal(hip.getWorldPosition(new THREE.Vector3()));
+    const model = this.root.children[0];
+    model.position.x -= local.x;
+    model.position.z -= local.z;
+    this.root.updateMatrixWorld(true);
+  }
+
   bodyPoints() {
     // Prefer Mixamo torso if this fighter is mid-kick (so mutual kicks collide)
     const src = (this.usingXbot && this.xbotBones.hips) ? this.xbotBones : this.bones;
@@ -438,7 +451,7 @@ class Fighter {
     const m = MOVES[id];
     this.move = id;
     this.state = 'attack';
-    const limb = this.custom === 'gundam' ? 'foot' : m.limb;
+    const limb = 'foot';
     this.setMoveLabel(limb === 'foot' ? '踢擊' : m.label);
     this.hitLanded = false;
     if (this.custom) {
@@ -447,6 +460,10 @@ class Fighter {
       this.busyUntil = now + duration * 0.95;
       this.cooldown = 0.6 + Math.random() * 0.5;
       this.pendingHit = { at: now + duration * 0.2, until: now + duration * 0.85, target: this.target, limb, label: limb === 'foot' ? '踢擊' : m.label, move: id, window: true };
+      matchEngine.startAttack(this, this.target, {
+        activeFrom: this.pendingHit.at, activeUntil: this.pendingHit.until,
+        damage: m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]),
+      });
       return;
     }
     if (id === 'kick') {
@@ -489,6 +506,7 @@ class Fighter {
 
   update(dt, now) {
     this.mixer.update(dt);
+    this.centerOnArenaPosition();
     if (this.xbotMixer && this.usingXbot) this.xbotMixer.update(dt);
 
     if (!this.custom && this.move === 'kick' && !this.usingXbot) this.applyKickPose(now);
@@ -507,11 +525,11 @@ class Fighter {
           this.pendingHit = null;
         } else {
           const touch = this.limbsTouch(tgt, ph.limb);
-          if (touch.ok) {
+          const result = matchEngine.tryHit(this, tgt, now, touch.ok);
+          if (result) {
             this.hitLanded = true;
             this.pendingHit = null;
-            const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
-            tgt.takeHit(dmg, now, this, ph.label || m.label);
+            if (!result.dodged) tgt.takeHit(result.damage, now, this, ph.label || m.label);
           }
         }
       } else {
@@ -542,6 +560,7 @@ class Fighter {
     }
 
     if (this.state === 'attack') {
+      matchEngine.cancelAttack(this);
       this.endXbotKick();
       this.resetKickBones();
       this.kickDur = 0;
@@ -571,6 +590,11 @@ class Fighter {
       return;
     }
     if (this.state === 'dodge') {
+      this.state = 'idle';
+      this.setMoveLabel('');
+      this.play('idle', true);
+    }
+    if (this.state === 'hit') {
       this.state = 'idle';
       this.setMoveLabel('');
       this.play('idle', true);
@@ -607,7 +631,6 @@ class Fighter {
 
   takeHit(dmg, now, attacker, moveLabel) {
     if (!this.alive) return;
-    this.hp = Math.max(0, this.hp - dmg);
     this.endXbotKick();
     this.resetKickBones();
     this.kickDur = 0;
@@ -635,22 +658,13 @@ class Fighter {
     this.play('hit', false);
     const hd = this.clips.hit?.getClip().duration || 0.35;
     this.busyUntil = now + hd * 0.9;
-    const self = this;
-    setTimeout(() => {
-      if (!self.alive) return;
-      if (self.state === 'hit') {
-        self.state = 'idle';
-        self.setMoveLabel('');
-        self.play('idle', true);
-      }
-    }, hd * 900);
   }
 }
 
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 const fighters = [];
-let resetting = false;
+let matchEngine;
 /** Deduped GLTF loads (office/survivor shared by 2 fighters each). */
 const gltfCache = new Map();
 let xbotLoadPromise = null;
@@ -695,7 +709,7 @@ async function spawn(spec, index, total) {
     const box = new THREE.Box3().setFromObject(model);
     const height = box.max.y - box.min.y;
     if (height > 0) {
-      const scale = spec.custom === 'mewtwo' ? 4 : 100;
+      const scale = spec.custom === 'sketchgirl' ? 10 : 100;
       model.scale.multiplyScalar(scale);
       model.position.y = 0;
     }
@@ -714,12 +728,17 @@ async function spawn(spec, index, total) {
   const actions = {};
   for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
   if (spec.custom) {
-    const names = [...new Set(Object.values(spec.custom === 'gundam' ? GUNDAM_MOVES : MEWTWO_MOVES).flat())];
+    const names = [...new Set(Object.values(GUNDAM_MOVES).flat())];
     const results = await Promise.allSettled(names.map((name) => loadGltf(`models/${spec.custom}/${name}.glb`)));
     results.forEach((result, i) => {
       if (result.status === 'fulfilled' && result.value.animations[0]) {
         const clip = result.value.animations[0].clone();
-        clip.tracks = clip.tracks.filter((track) => !/^Armature\.(position|quaternion|scale)$/.test(track.name));
+        clip.tracks = clip.tracks.filter((track) => {
+          const nodeName = THREE.PropertyBinding.parseTrackName(track.name).nodeName;
+          return !/^Armature\./.test(track.name) &&
+            (spec.custom !== 'sketchgirl' || track.name.endsWith('.quaternion')) &&
+            !!THREE.PropertyBinding.findNode(root, nodeName);
+        });
         // Root motion is controlled by the arena AI, not by the animation clip.
         for (const track of clip.tracks) {
           if (/(Hips|TransN)\.position$/.test(track.name)) {
@@ -772,28 +791,25 @@ function separateFighters() {
   }
 }
 
-function maybeReset(now) {
-  if (resetting) return;
-  if (fighters.filter((f) => f.alive).length >= 2) return;
-  resetting = true;
-  setTimeout(() => {
-    for (let i = 0; i < fighters.length; i++) {
-      const f = fighters[i];
-      f.endXbotKick();
-      f.hp = 100;
-      f.alive = true;
-      f.state = 'idle';
-      f.busyUntil = 0;
-      f.cooldown = 0.3 + Math.random();
-      f.marker.visible = true;
-      const ang = (i / fighters.length) * Math.PI * 2 + Math.random() * 0.4;
-      const r = 2.8 + Math.random() * 1.5;
-      f.root.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
-      f.play('idle', true);
-    }
-    pickTargets();
-    resetting = false;
-  }, 1600);
+function resetRound() {
+  fighters.forEach((f, i) => {
+    f.endXbotKick();
+    f.hp = 100;
+    f.alive = true;
+    f.state = 'idle';
+    f.move = null;
+    f.pendingHit = null;
+    f.hitLanded = false;
+    f.busyUntil = 0;
+    f.cooldown = 0.5 + Math.random() * 0.5;
+    f.dodgeCooldown = 0;
+    f.marker.visible = true;
+    f.setMoveLabel('');
+    f.root.position.set(i === 0 ? -3 : 3, 0, 0);
+    f.play('idle', true);
+  });
+  pickTargets();
+  fighters.forEach(f => f.face(f.target.root.position));
 }
 
 async function main() {
@@ -802,7 +818,18 @@ async function main() {
   await Promise.all([...new Set(ROSTER.map((r) => r.url))].map(loadGltf));
   const spawned = await Promise.all(ROSTER.map((spec, i) => spawn(spec, i, ROSTER.length)));
   fighters.push(...spawned);
-  pickTargets();
+  matchEngine = new FightingEngine(fighters, {
+    startTime: performance.now() / 1000,
+    onRoundStart: resetRound,
+    onRoundEnd: () => {
+      for (const f of fighters) {
+        f.pendingHit = null;
+        f.move = null;
+        f.setMoveLabel('');
+        if (f.alive) { f.state = 'idle'; f.play('idle', true); }
+      }
+    },
+  });
 
   // X Bot (~meshopt) loads in background — kick falls back to procedural until ready
   if (fighters.some((f) => !f.custom)) ensureXbotLoaded();
@@ -811,12 +838,17 @@ async function main() {
   function tick() {
     const dt = Math.min(clock.getDelta(), 0.05);
     const now = performance.now() / 1000;
-    for (const f of fighters) f.update(dt, now);
-    separateFighters();
-    pickTargets();
-    maybeReset(now);
+    matchEngine.step(now);
+    if (matchEngine.phase === 'fight') {
+      for (const f of fighters) f.update(dt, now);
+      separateFighters();
+      pickTargets();
+    } else {
+      for (const f of fighters) { f.mixer.update(dt); f.centerOnArenaPosition(); }
+    }
     const hp = fighters.map((f) => `${f.name} ${f.alive ? Math.ceil(f.hp) : 'KO'}`).join(' · ');
-    setStatus(hp);
+    const roundStatus = matchEngine.phase === 'ready' ? '準備！' : matchEngine.phase === 'fight' ? `剩餘 ${Math.ceil(matchEngine.remaining)} 秒` : matchEngine.result;
+    setStatus(`第 ${matchEngine.round} 回合 · ${matchEngine.scores.join(' : ')} · ${roundStatus} | ${hp}`);
     controls.update();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
