@@ -693,7 +693,8 @@ namespace SakugaEngine
                     CancelConditions |= CancelCondition.HIT_CANCEL;
                     GD.Print("Fighter: Hit!");
                 }
-                //if (Brain != null && UseAI) Brain.canAdvance = true;
+                // Let the bot continue its combo list once an attack connects (hit or block).
+                if (Brain != null && UseAI) Brain.canAdvance = true;
                 //if (target.Brain != null && target.UseAI) target.Brain.Reset();
                 HitConfirm(target, box.SelfSuperGaugeGain, (uint)box.SelfHitStopDuration, hitFX, contact);
             }

@@ -9,7 +9,7 @@ namespace SakugaEngine
     // Render a 3D model from Sakuga's deterministic animation state and frame.
     public partial class CharacterVisual : Node3D
     {
-        private enum Mode { Loop, Attack, Guard, Hit, Down, GetUp, React, Fall, Rise }
+        private enum Mode { Loop, Attack, Guard, Hit, Down, GetUp, React, Fall, Rise, Air }
 
         private Node3D model;
         private AnimationPlayer animationPlayer;
@@ -21,9 +21,9 @@ namespace SakugaEngine
         private bool calibrated;
         private float guardTime, downTime, downTilt = 85;
         private string downClip;
-        private float lyingTime, riseStart, riseEnd;
+        private float lyingTime, riseStart, riseEnd, jumpStart, jumpPeak, jumpLand;
         private readonly Dictionary<string, float> impactTimes = new();
-        private int loopTick, lastFrame = -1;
+        private int loopTick, sourceTick, lastFrame = -1;
         private string lastSource = "";
 
         // The Kung Fu attacks all start from "idle guard2"'s stance; "idle guard" is the opposite lead and snaps the body around.
@@ -31,10 +31,13 @@ namespace SakugaEngine
         private string GuardClip => girl ? "block" : "Kung Fu idle guard2";
         private string ShowClip => girl ? "victory" : "Kung Fu idle drunk";
 
+        // Impact is timed on the striking limbs only, so a stepping foot can't stand in for the punching hand.
+        private static readonly string[] PunchClips = { "jab", "jab_cross", "uppercut", "Kung Fu sexy punch", "Kung Fu phantom punch", "Kung Fu sexy no look punch", "Kung Fu double push punch" };
+        private static readonly string[] KickClips = { "roundhouse", "low_kick", "hurricane_kick", "chapa_2", "bencao", "Kung Fu sexy kick" };
         private static readonly string[] AttackSources = { "5A", "5B", "5C", "2A", "2B", "2C", "j_5A", "j_5B", "j_5C", "66B", "236C_1", "236C_2", "236C_3", "623B", "623B_2", "236236A", "Throw_Enter", "Throw_Sequence" };
         // Capoeira clips are .glb next to the model; the upright boxing/MMA set from Mixamo is .fbx in mixamo/.
         private static readonly string[] GirlGlbClips = { "chapa_2", "bencao", "ginga_forward" };
-        private static readonly string[] GirlFbxClips = { "idle", "walk_forward", "walk_backward", "run", "jab", "jab_cross", "uppercut", "roundhouse", "low_kick", "hurricane_kick", "block", "hit_light", "hit_big", "knockdown", "get_up", "victory" };
+        private static readonly string[] GirlFbxClips = { "idle", "walk_forward", "walk_backward", "run", "jab", "jab_cross", "uppercut", "roundhouse", "low_kick", "hurricane_kick", "block", "hit_light", "hit_big", "knockdown", "get_up", "victory", "jump" };
 
         public void Initialize(bool useGirl)
         {
@@ -94,6 +97,7 @@ namespace SakugaEngine
                 var player = FindNodeOfType<AnimationPlayer>(source);
                 if (player == null || player.GetAnimationList().Length == 0) { GD.PushError($"Missing animation {clip}"); source.Free(); continue; }
                 var animation = (Animation)player.GetAnimation(player.GetAnimationList()[0]).Duplicate(true);
+                if (clip == "jump") MeasureJump(animation);
                 var sourceSkeleton = FindNodeOfType<Skeleton3D>(source);
                 Transform3D sourceSpace = sourceSkeleton != null ? SceneTransform(source, sourceSkeleton) : Transform3D.Identity;
                 Transform3D targetSpace = SceneTransform(model, skeleton);
@@ -107,10 +111,11 @@ namespace SakugaEngine
                     animation.TrackSetPath(i, new NodePath(model.GetPathTo(skeleton) + ":" + bone));
                     if (sourceBone < 0) continue;
                     // Clips exported with a different rest pose (the Mixamo FBX set) are re-expressed in the model's bone frames:
-                    // local' = parentOffset^-1 * local * boneOffset, where offset = sourceRest^-1 * targetRest in world space.
-                    Quaternion boneOffset = WorldRest(sourceSkeleton, sourceSpace, sourceBone).Inverse() * WorldRest(skeleton, targetSpace, targetBone);
+                    // local' = parentOffset^-1 * local * boneOffset, where offset = sourceRest^-1 * bend * targetRest in world space,
+                    // and bend turns the target's rest bone onto the source's (her model rests with arms lowered, Mixamo in a T-pose).
+                    Quaternion boneOffset = PoseOffset(sourceSkeleton, sourceSpace, sourceBone, skeleton, targetSpace, targetBone);
                     int sourceParent = sourceSkeleton.GetBoneParent(sourceBone), targetParent = skeleton.GetBoneParent(targetBone);
-                    Quaternion parentOffset = WorldRest(sourceSkeleton, sourceSpace, sourceParent).Inverse() * WorldRest(skeleton, targetSpace, targetParent);
+                    Quaternion parentOffset = PoseOffset(sourceSkeleton, sourceSpace, sourceParent, skeleton, targetSpace, targetParent);
                     if (boneOffset.IsEqualApprox(Quaternion.Identity) && parentOffset.IsEqualApprox(Quaternion.Identity)) continue;
                     Quaternion parentInverse = parentOffset.Inverse();
                     for (int k = 0; k < animation.TrackGetKeyCount(i); k++)
@@ -121,6 +126,28 @@ namespace SakugaEngine
             }
         }
 
+        // Split the jump clip at take-off, apex and touch-down from the root's height, before position tracks are dropped.
+        private void MeasureJump(Animation animation)
+        {
+            for (int i = 0; i < animation.GetTrackCount(); i++)
+            {
+                string path = animation.TrackGetPath(i).ToString();
+                if (animation.TrackGetType(i) != Animation.TrackType.Position3D || !(path.EndsWith(":mixamorig_Hips") || path.EndsWith(":_rootJoint"))) continue;
+                float length = (float)animation.Length;
+                var height = new float[121];
+                int peak = 0;
+                for (int k = 0; k <= 120; k++) { height[k] = animation.PositionTrackInterpolate(i, length * k / 120f).Y; if (height[k] > height[peak]) peak = k; }
+                float ground = height[0] + 0.1f * (height[peak] - height[0]);
+                int start = 0, land = 120;
+                for (int k = peak; k >= 0; k--) if (height[k] <= ground) { start = k; break; }
+                for (int k = peak; k <= 120; k++) if (height[k] <= ground) { land = k; break; }
+                jumpStart = length * start / 120f;
+                jumpPeak = length * peak / 120f;
+                jumpLand = length * land / 120f;
+                return;
+            }
+        }
+
         // Transform of a node relative to a scene root that is not in the tree yet.
         private static Transform3D SceneTransform(Node root, Node3D node)
         {
@@ -128,6 +155,26 @@ namespace SakugaEngine
             for (Node n = node; n != null && n != root; n = n.GetParent())
                 if (n is Node3D spatial) result = spatial.Transform * result;
             return result;
+        }
+
+        private static Quaternion PoseOffset(Skeleton3D source, Transform3D sourceSpace, int sourceBone, Skeleton3D target, Transform3D targetSpace, int targetBone)
+        {
+            Quaternion bend = Quaternion.Identity;
+            Vector3 from = RestDirection(target, targetSpace, targetBone), to = RestDirection(source, sourceSpace, sourceBone);
+            // Only real pose differences (her arms sit ~24 degrees low); larger gaps come from arbitrary "_End" tip bones.
+            float dot = from.Dot(to);
+            if (from != Vector3.Zero && to != Vector3.Zero && dot < 0.9999f && dot > 0.7f) bend = new Quaternion(from, to);
+            return WorldRest(source, sourceSpace, sourceBone).Inverse() * bend * WorldRest(target, targetSpace, targetBone);
+        }
+
+        // World direction from a bone to its first child at rest, or zero for the skeleton node and leaf bones.
+        private static Vector3 RestDirection(Skeleton3D skeleton, Transform3D space, int bone)
+        {
+            if (bone < 0) return Vector3.Zero;
+            int[] children = skeleton.GetBoneChildren(bone);
+            if (children.Length == 0) return Vector3.Zero;
+            Vector3 start = (space * skeleton.GetBoneGlobalRest(bone)).Origin, end = (space * skeleton.GetBoneGlobalRest(children[0])).Origin;
+            return (end - start).Normalized();
         }
 
         // World rotation of a bone's rest pose; bone -1 is the skeleton node itself.
@@ -188,6 +235,7 @@ namespace SakugaEngine
             if (Is("Walk_Backwards") || Is("Dash_Backwards")) return ("walk_backward", Mode.Loop);
             if (Is("Dash_Forward") || Is("RunStop")) return ("run", Mode.Loop);
             if (Is("Crouch")) return ("ginga_forward", Mode.Loop);
+            if (Is("Jump") || Is("Falling")) return ("jump", Mode.Air);
 
             switch (source)
             {
@@ -233,13 +281,15 @@ namespace SakugaEngine
             {
                 if (!animationPlayer.HasAnimation(clip)) continue;
                 float length = (float)animationPlayer.GetAnimation(clip).Length, best = float.MinValue, bestTime = length * 0.4f;
-                for (int i = 0; i <= 60; i++)
+                int first = Array.IndexOf(KickClips, clip) >= 0 ? 2 : 0, last = Array.IndexOf(PunchClips, clip) >= 0 ? 1 : 3;
+                for (int i = 0; i <= 120; i++)
                 {
-                    float t = length * i / 60f;
+                    float t = length * i / 120f;
                     Pose(clip, t);
                     var hip = JointPosition(hips);
-                    foreach (int limb in limbs)
+                    for (int l = first; l <= last && l < limbs.Length; l++)
                     {
+                        int limb = limbs[l];
                         if (limb < 0) continue;
                         float reach = JointPosition(limb).X - hip.X;
                         if (reach > best) { best = reach; bestTime = t; }
@@ -326,8 +376,8 @@ namespace SakugaEngine
             int f = Math.Max(0, frame);
 
             // Loops run on their own clock so short looping states don't restart the clip; hitstop freezes it.
-            if (source != lastSource) { if (MapAnimation(lastSource).clip != clip) loopTick = 0; lastSource = source; }
-            else if (frame != lastFrame) loopTick++;
+            if (source != lastSource) { if (MapAnimation(lastSource).clip != clip) loopTick = 0; sourceTick = 0; lastSource = source; }
+            else if (frame != lastFrame) { loopTick++; sourceTick++; }
             lastFrame = frame;
 
             float tilt = 0, time = 0;
@@ -371,6 +421,11 @@ namespace SakugaEngine
                 case Mode.Fall:
                     bool lying = source.StartsWith("Hit_OnTheGround") || source.StartsWith("Hit_Down");
                     time = lying ? lyingTime : Mathf.Lerp(0, lyingTime, Math.Min(1, f / (float)duration));
+                    break;
+                case Mode.Air:
+                    time = source.StartsWith("Falling")
+                        ? Mathf.Lerp(jumpPeak, jumpLand, Math.Min(1, sourceTick / 20f)) // Falling is a short looping state
+                        : Mathf.Lerp(jumpStart, jumpPeak, Math.Min(1, f / (float)duration));
                     break;
                 case Mode.Rise:
                     time = Mathf.Lerp(riseStart, riseEnd, Math.Min(1, f / (float)duration));
