@@ -1,5 +1,7 @@
 # Sakuga Auto Fight — desktop prototype
 
+Last updated on GitHub: 2026-10-27 12:43 HKT (UTC+8)
+
 This separate Godot 4.7 .NET project uses [Sakuga Engine](https://github.com/NoisyChain/Sakuga-Engine), commit `d54581b131ef2a1f6b8511a79c74ea37168c31b1`, MIT license; see `LICENSE`. It does not replace the browser game in the parent folder. Sakuga's Godot 4 C# version does not currently export to the web.
 
 Two CPU fighters use Sakuga's sample fighter states, hitboxes, AI and round rules. Their sprites are hidden and the existing 3D characters are driven by Sakuga's state and frame through `CharacterVisual.cs`. This is an early adaptation: both fighters share the sample moves and hitboxes, and existing animation clips are mapped to those states. Each attack clip is time-warped so its furthest reach lands on the move's first active hitbox frame. Neither model has reaction clips, so blocking holds a guard pose, hits lean the stance back, and knockdowns lay the fighter's most upright frame flat on its back. The original sample assets remain part of the upstream project.
