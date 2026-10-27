@@ -22,7 +22,7 @@
 </head>
 <body>
   <div id="hud">
-    <div><b>Auto mode</b> — watch only</div>
+    <div><b>Auto mode</b> — 直拳／重拳／掃踢（手腳骨碰撞）</div>
     <div id="status">Loading…</div>
   </div>
   <div id="credit">
@@ -101,11 +101,17 @@ function clipMap(gltfActions, tag) {
 }
 
 
-const ATTACK_ENTER = 0.72;   // start punch only this close (metres between roots)
-const ATTACK_STOP = 0.48;    // don't walk through each other
-const HAND_HIT_R = 0.38;     // hand/foot must be within this of torso bones
-const BODY_BONES = ['Hips', 'Spine', 'Head'];
-const STRIKE_BONES = ['LeftHand', 'RightHand', 'LeftFoot', 'RightFoot'];
+
+const ATTACK_ENTER = 0.78;
+const ATTACK_STOP = 0.50;
+const HAND_HIT_R = 0.42;
+const FOOT_HIT_R = 0.48;
+
+const MOVES = {
+  jab:   { label: '直拳', limb: 'hand', dmg: [12, 18], dur: 0.55, hitAt: 0.28, enter: 0.78, step: 0.5 },
+  heavy: { label: '重拳', limb: 'hand', dmg: [22, 30], dur: 0.85, hitAt: 0.42, enter: 0.82, step: 0.35 },
+  kick:  { label: '掃踢', limb: 'foot', dmg: [18, 26], dur: 0.70, hitAt: 0.36, enter: 0.90, step: 0.45 },
+};
 
 function findBone(root, name) {
   let found = null;
@@ -124,40 +130,94 @@ class Fighter {
     this.name = name;
     this.hp = 100;
     this.state = 'idle';
+    this.move = null;
     this.target = null;
-    this.cooldown = 0.5 + Math.random();
+    this.cooldown = 0.4 + Math.random();
     this.alive = true;
     this.busyUntil = 0;
     this.pendingHit = null;
+    this.kickT = 0;
+    this.kickDur = 0;
+    this.kickSide = 'l';
     this.bones = {
       hips: findBone(root, 'Hips'),
       spine: findBone(root, 'Spine'),
       head: findBone(root, 'Head'),
+      lArm: findBone(root, 'LeftUpLeg') || findBone(root, 'LeftArm'),
+      // legs
+      lUpLeg: findBone(root, 'LeftUpLeg'),
+      lLeg: findBone(root, 'LeftLeg'),
+      lFoot: findBone(root, 'LeftFoot'),
+      rUpLeg: findBone(root, 'RightUpLeg'),
+      rLeg: findBone(root, 'RightLeg'),
+      rFoot: findBone(root, 'RightFoot'),
       lHand: findBone(root, 'LeftHand'),
       rHand: findBone(root, 'RightHand'),
-      lFoot: findBone(root, 'LeftFoot'),
-      rFoot: findBone(root, 'RightFoot'),
+      lFore: findBone(root, 'LeftForeArm'),
+      rFore: findBone(root, 'RightForeArm'),
     };
+    // rest local quats for procedural kick overlay
+    this._rest = {};
+    for (const [k, b] of Object.entries(this.bones)) {
+      if (b) this._rest[k] = b.quaternion.clone();
+    }
     this.marker = new THREE.Mesh(
       new THREE.SphereGeometry(0.08, 10, 10),
       new THREE.MeshBasicMaterial({ color: tint })
     );
     this.marker.position.y = 2.05;
     root.add(this.marker);
+    this.moveLabel = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: (() => {
+          const c = document.createElement('canvas');
+          c.width = 256; c.height = 64;
+          const g = c.getContext('2d');
+          g.fillStyle = 'rgba(0,0,0,0)';
+          g.fillRect(0,0,256,64);
+          const tex = new THREE.CanvasTexture(c);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          this._labelCanvas = c;
+          this._labelCtx = g;
+          this._labelTex = tex;
+          return tex;
+        })(),
+        transparent: true, depthTest: false,
+      })
+    );
+    this.moveLabel.scale.set(1.2, 0.3, 1);
+    this.moveLabel.position.y = 2.35;
+    this.moveLabel.visible = false;
+    root.add(this.moveLabel);
     this.play('idle', true);
   }
 
-  play(name, loop = false) {
+  setMoveLabel(text) {
+    const g = this._labelCtx;
+    const c = this._labelCanvas;
+    g.clearRect(0, 0, c.width, c.height);
+    if (!text) { this.moveLabel.visible = false; this._labelTex.needsUpdate = true; return; }
+    g.fillStyle = 'rgba(0,0,0,0.55)';
+    g.fillRect(8, 8, 240, 48);
+    g.fillStyle = '#9fe870';
+    g.font = 'bold 28px ui-sans-serif, system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 128, 34);
+    this._labelTex.needsUpdate = true;
+    this.moveLabel.visible = true;
+  }
+
+  play(name, loop = false, timeScale = 1) {
     const next = this.clips[name];
     if (!next) return;
-    if (this.current === next && this.state === name) return;
     next.reset();
     next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
     next.clampWhenFinished = !loop;
+    next.timeScale = timeScale;
     next.enabled = true;
     if (this.current && this.current !== next) {
-      this.current.fadeOut(0.12);
-      next.reset().fadeIn(0.12).play();
+      this.current.fadeOut(0.1);
+      next.reset().fadeIn(0.1).play();
     } else {
       next.play();
     }
@@ -187,9 +247,12 @@ class Fighter {
     return pts;
   }
 
-  strikePoints() {
+  strikePoints(limb) {
+    const keys = limb === 'foot'
+      ? ['lFoot', 'rFoot']
+      : ['lHand', 'rHand'];
     const pts = [];
-    for (const key of ['lHand', 'rHand', 'lFoot', 'rFoot']) {
+    for (const key of keys) {
       const b = this.bones[key];
       if (!b) continue;
       const p = new THREE.Vector3();
@@ -199,10 +262,10 @@ class Fighter {
     return pts;
   }
 
-  /** True only if a striking limb is overlapping opponent torso. */
-  limbsTouch(target) {
-    const strikes = this.strikePoints();
+  limbsTouch(target, limb) {
+    const strikes = this.strikePoints(limb || 'hand');
     const bodies = target.bodyPoints();
+    const r = (limb === 'foot') ? FOOT_HIT_R : HAND_HIT_R;
     let best = Infinity;
     let which = null;
     for (const s of strikes) {
@@ -211,43 +274,120 @@ class Fighter {
         if (d < best) { best = d; which = s.key; }
       }
     }
-    return best <= HAND_HIT_R ? { ok: true, dist: best, limb: which } : { ok: false, dist: best, limb: which };
+    return best <= r ? { ok: true, dist: best, limb: which } : { ok: false, dist: best, limb: which };
+  }
+
+  /** Procedural kick after mixer update: swing thigh forward. */
+  applyKickPose(now) {
+    if (this.kickDur <= 0) return;
+    const t = (now - this.kickT) / this.kickDur;
+    if (t < 0 || t > 1) {
+      this.resetKickBones();
+      this.kickDur = 0;
+      return;
+    }
+    // ease: wind up → snap → recover
+    let swing;
+    if (t < 0.45) swing = (t / 0.45);
+    else if (t < 0.7) swing = 1;
+    else swing = 1 - (t - 0.7) / 0.3;
+    swing = Math.max(0, Math.min(1, swing));
+    const side = this.kickSide;
+    const up = this.bones[side + 'UpLeg'];
+    const mid = this.bones[side + 'Leg'];
+    if (!up) return;
+    // Mixamo/humanoid: rotate around local X roughly lifts leg forward
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-1.35 * swing, 0.15 * swing, 0.25 * swing));
+    up.quaternion.copy(this._rest[side + 'UpLeg']).multiply(q);
+    if (mid && this._rest[side + 'Leg']) {
+      const q2 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.55 * swing, 0, 0));
+      mid.quaternion.copy(this._rest[side + 'Leg']).multiply(q2);
+    }
+  }
+
+  resetKickBones() {
+    for (const k of ['lUpLeg', 'lLeg', 'rUpLeg', 'rLeg']) {
+      if (this.bones[k] && this._rest[k]) this.bones[k].quaternion.copy(this._rest[k]);
+    }
+  }
+
+  pickMove() {
+    const roll = Math.random();
+    if (roll < 0.40) return 'jab';
+    if (roll < 0.70) return 'kick';
+    return 'heavy';
+  }
+
+  startMove(id, now) {
+    const m = MOVES[id];
+    this.move = id;
+    this.state = 'attack';
+    this.setMoveLabel(m.label);
+    if (id === 'kick') {
+      // hold idle while procedural kick runs on bones
+      this.play('idle', true, 0.3);
+      this.kickSide = Math.random() < 0.5 ? 'l' : 'r';
+      this.kickT = now;
+      this.kickDur = m.dur;
+      this.busyUntil = now + m.dur;
+      this.cooldown = 0.75 + Math.random() * 0.4;
+      this.pendingHit = { at: now + m.hitAt, target: this.target, limb: 'foot', move: id };
+    } else {
+      const scale = id === 'heavy' ? 0.72 : 1.15;
+      this.play('attack', false, scale);
+      const ad = (this.clips.attack?.getClip().duration || 0.55) / scale;
+      this.busyUntil = now + Math.min(ad, m.dur) * 0.95;
+      this.cooldown = (id === 'heavy' ? 1.0 : 0.55) + Math.random() * 0.35;
+      this.pendingHit = { at: now + m.hitAt, target: this.target, limb: 'hand', move: id };
+    }
   }
 
   update(dt, now) {
     this.mixer.update(dt);
+    // procedural kick AFTER mixer so it wins that frame
+    if (this.move === 'kick') this.applyKickPose(now);
+    else if (this.kickDur > 0) { this.resetKickBones(); this.kickDur = 0; }
+
     if (!this.alive) return;
     this.cooldown -= dt;
 
-    // Resolve delayed hit using LIVE bone positions (must actually touch)
     if (this.pendingHit && now >= this.pendingHit.at) {
-      const tgt = this.pendingHit.target;
+      const ph = this.pendingHit;
       this.pendingHit = null;
+      const tgt = ph.target;
+      const m = MOVES[ph.move] || MOVES.jab;
       if (this.alive && tgt?.alive) {
-        const touch = this.limbsTouch(tgt);
+        const touch = this.limbsTouch(tgt, ph.limb);
         if (touch.ok) {
-          tgt.takeHit(16 + Math.random() * 12, now, this);
+          const dmg = m.dmg[0] + Math.random() * (m.dmg[1] - m.dmg[0]);
+          tgt.takeHit(dmg, now, this, m.label);
         }
-      }
-      if (this.alive && this.state === 'attack') {
-        this.state = 'idle';
-        this.play('idle', true);
       }
     }
 
     if (now < this.busyUntil) {
-      // during windup, keep facing / slight step-in so fist reaches
       if (this.state === 'attack' && this.target?.alive) {
         this.face(this.target.root.position);
         const me = this.root.position;
         const them = this.target.root.position;
         const dist = me.distanceTo(them);
-        if (dist > ATTACK_STOP + 0.05) {
+        const step = (MOVES[this.move] || MOVES.jab).step;
+        if (dist > ATTACK_STOP + 0.04) {
           const dir = new THREE.Vector3(them.x - me.x, 0, them.z - me.z).normalize();
-          me.addScaledVector(dir, 0.55 * dt);
+          me.addScaledVector(dir, step * dt);
         }
       }
       return;
+    }
+
+    // move finished
+    if (this.state === 'attack') {
+      this.resetKickBones();
+      this.kickDur = 0;
+      this.move = null;
+      this.setMoveLabel('');
+      this.state = 'idle';
+      this.play('idle', true);
     }
 
     if (!this.target || !this.target.alive) {
@@ -260,7 +400,6 @@ class Fighter {
     const dist = me.distanceTo(them);
     this.face(them);
 
-    // separate if overlapping
     if (dist < ATTACK_STOP) {
       const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
       if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
@@ -268,7 +407,10 @@ class Fighter {
       me.addScaledVector(dir, (ATTACK_STOP - dist) * 0.5);
     }
 
-    if (dist > ATTACK_ENTER) {
+    const nextMove = this.cooldown <= 0 ? this.pickMove() : null;
+    const need = nextMove ? MOVES[nextMove].enter : ATTACK_ENTER;
+
+    if (dist > need) {
       const run = dist > 2.8;
       if (this.state !== (run ? 'run' : 'walk')) {
         this.state = run ? 'run' : 'walk';
@@ -279,43 +421,40 @@ class Fighter {
       me.addScaledVector(dir, speed * dt);
       const r = Math.hypot(me.x, me.z);
       if (r > 7.2) me.multiplyScalar(7.2 / r);
-    } else if (this.cooldown <= 0) {
-      this.state = 'attack';
-      this.play('attack', false);
-      const ad = this.clips.attack?.getClip().duration || 0.55;
-      // hit check near mid of punch when hands extend
-      const hitAt = now + Math.max(0.22, ad * 0.45);
-      this.busyUntil = now + ad * 0.95;
-      this.cooldown = 0.7 + Math.random() * 0.45;
-      this.pendingHit = { at: hitAt, target: this.target };
+    } else if (nextMove) {
+      this.startMove(nextMove, now);
     } else if (this.state !== 'idle' && this.state !== 'attack') {
       this.state = 'idle';
       this.play('idle', true);
     }
   }
 
-  takeHit(dmg, now, attacker) {
+  takeHit(dmg, now, attacker, moveLabel) {
     if (!this.alive) return;
     this.hp = Math.max(0, this.hp - dmg);
+    this.resetKickBones();
+    this.kickDur = 0;
+    this.pendingHit = null;
+    this.move = null;
+    this.setMoveLabel(moveLabel ? ('中：' + moveLabel) : '');
     if (attacker) {
       const me = this.root.position;
       const them = attacker.root.position;
       const dir = new THREE.Vector3(me.x - them.x, 0, me.z - them.z);
       if (dir.lengthSq() > 1e-6) {
         dir.normalize();
-        me.addScaledVector(dir, 0.22);
+        me.addScaledVector(dir, moveLabel === '重拳' || moveLabel === '掃踢' ? 0.32 : 0.18);
       }
     }
     if (this.hp <= 0) {
       this.alive = false;
       this.state = 'death';
-      this.pendingHit = null;
+      this.setMoveLabel('');
       this.play('death', false);
       this.marker.visible = false;
       return;
     }
     this.state = 'hit';
-    this.pendingHit = null;
     this.play('hit', false);
     const hd = this.clips.hit?.getClip().duration || 0.35;
     this.busyUntil = now + hd * 0.9;
@@ -324,6 +463,7 @@ class Fighter {
       if (!self.alive) return;
       if (self.state === 'hit') {
         self.state = 'idle';
+        self.setMoveLabel('');
         self.play('idle', true);
       }
     }, hd * 900);
