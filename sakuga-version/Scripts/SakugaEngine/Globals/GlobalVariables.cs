@@ -28,7 +28,7 @@ namespace SakugaEngine.Global
         public const int DefaultBlockHitstop = 6;
         public const int DefaultThrowHitstop = 16;
         public const int DefaultLongThrowHitstop = 30;
-        public const int ThrowEscapePushForce = 45000;
+        public const int ThrowEscapePushForce = 15000;
         public const int GuardCrushHitstun = 40;
         public const ushort BaseMinDamageScaling = 35;
         public const ushort BaseMaxDamageScaling = 100;

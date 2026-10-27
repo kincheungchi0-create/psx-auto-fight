@@ -113,7 +113,8 @@ namespace SakugaEngine
 
                             teching = true;
                         }
-                        else if (_owner.Hitstun.IsRunning())
+                        // Recovery only exists in the air; queuing it on the ground made the bot throw (AB) right after every hit.
+                        else if (_owner.Hitstun.IsRunning() && _owner.Body != null && !_owner.Body.IsOnGround)
                         {
                             int rnd = RNG.Next(0, 10);
                             if (rnd < currentBehavior.TechingRate)

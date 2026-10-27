@@ -140,7 +140,7 @@ metadata/_custom_type_script = "uid://bogcblgipf4f7"
 script = ExtResource("4_03ch4")
 Distance = Vector2i(6000, 0)
 UseOnGround = true
-Probability = 4
+Probability = 1
 ActionsList = PackedInt32Array(15)
 metadata/_custom_type_script = "uid://bogcblgipf4f7"
 

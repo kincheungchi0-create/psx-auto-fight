@@ -598,7 +598,7 @@ namespace SakugaEngine
             if (CanHitstop()) Hitstop.Stop();
             if (StateManager != null) StateManager.PlayState(selfSelectThrowEscape);
             CurrentGrabbedNodeID = -1;
-            PushActor(10, -40000 * Body.PlayerSide, 0, 0);
+            PushActor(10, -GlobalVariables.ThrowEscapePushForce * Body.PlayerSide, 0, 0);
         }
         public void HitConfirm(SakugaActor target, int superGaugeGain, uint hitStopDuration, int hitEffect, Vector2I VFXSpawn)
         {
