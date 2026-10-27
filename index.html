@@ -190,6 +190,18 @@ class Fighter {
       lFore: findBone(root, 'LeftForeArm'),
       rFore: findBone(root, 'RightForeArm'),
     };
+    // Calibrate the distance from the foot joints to the soles in the bind pose.
+    // The mesh bounds are measured once; subsequent frames only read two bones.
+    this.soleOffset = null;
+    const feet = [this.bones.lFoot, this.bones.rFoot].filter(Boolean);
+    if (custom && feet.length) {
+      root.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(root.children[0], true);
+      const lowestJoint = Math.min(...feet.map((foot) => foot.getWorldPosition(new THREE.Vector3()).y));
+      if (Number.isFinite(bounds.min.y) && Number.isFinite(lowestJoint)) {
+        this.soleOffset = Math.max(0, lowestJoint - bounds.min.y);
+      }
+    }
     this._rest = {};
     for (const [k, b] of Object.entries(this.bones)) {
       if (b) this._rest[k] = b.quaternion.clone();
@@ -347,6 +359,12 @@ class Fighter {
     model.position.x -= local.x;
     model.position.z -= local.z;
     this.root.updateMatrixWorld(true);
+    if (this.soleOffset !== null) {
+      const feet = [this.bones.lFoot, this.bones.rFoot].filter(Boolean);
+      const lowestJoint = Math.min(...feet.map((foot) => foot.getWorldPosition(new THREE.Vector3()).y));
+      if (Number.isFinite(lowestJoint)) model.position.y += this.soleOffset - lowestJoint;
+      this.root.updateMatrixWorld(true);
+    }
   }
 
   bodyPoints() {
