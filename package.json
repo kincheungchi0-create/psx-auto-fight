@@ -2,7 +2,7 @@
   "name": "psx-auto-fight",
   "private": true,
   "version": "1.0.0",
-  "description": "Three.js automatic fighting game",
+  "description": "Babylon.js automatic fighting game",
   "scripts": {
     "start": "npx --yes serve .",
     "test": "node --test"
